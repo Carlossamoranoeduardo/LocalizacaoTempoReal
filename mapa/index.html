@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Roteirizador</title>
+
+<link
+rel="stylesheet"
+href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}
+
+#map {
+    width: 100%;
+    height: 100vh;
+}
+
+#painel {
+
+    position: absolute;
+
+    z-index: 1000;
+
+    top: 15px;
+    left: 15px;
+
+    width: 360px;
+    max-height: 90vh;
+
+    overflow-y: auto;
+
+    background: white;
+
+    padding: 18px;
+
+    border-radius: 12px;
+
+    font-family: Arial;
+
+    box-shadow:
+        0 3px 15px
+        rgba(0,0,0,.3);
+
+}
+
+textarea {
+
+    width: 100%;
+
+    height: 350px;
+
+    box-sizing: border-box;
+
+    resize: vertical;
+
+    padding: 10px;
+
+    font-size: 14px;
+
+}
+
+button {
+
+    width: 100%;
+
+    margin-top: 10px;
+
+    padding: 13px;
+
+    border: 0;
+
+    border-radius: 8px;
+
+    background: #1976d2;
+
+    color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+
+}
+
+button:hover {
+    background: #125ca5;
+}
+
+#status {
+
+    margin-top: 12px;
+
+    font-weight: bold;
+
+}
+
+#info {
+
+    margin-top: 10px;
+
+    line-height: 1.5;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+
+<div id="painel">
+
+<h2>Roteirizador</h2>
+
+<div>
+
+<strong>Localização atual:</strong>
+
+<div id="gps">
+Aguardando GPS...
+</div>
+
+</div>
+
+
+<br>
+
+
+<strong>Endereços</strong>
+
+<p>
+Cole um endereço por linha.
+</p>
+
+
+<textarea
+id="enderecos"
+placeholder="Rua X, 100, São José do Rio Preto - SP
+Avenida Y, 500, Campinas - SP
+Rua Z, 200, Santos - SP"></textarea>
+
+
+<button onclick="calcularRota()">
+    CALCULAR ROTA
+</button>
+
+<button
+    id="botaoEnviarRota"
+    onclick="enviarRotaParaCelular()"
+    style="display:none;background:#2e7d32;">
+
+    ENVIAR ROTA PARA CELULAR
+
+</button>
+<div id="linksRotas" style="display:none;margin-top:15px;">
+    <strong>LINKS DA ROTA PARA WHATSAPP</strong>
+
+    <div id="listaLinksRotas"></div>
+</div>
+
+
+<div id="status">
+
+Aguardando localização...
+
+</div>
+
+
+<div id="info"></div>
+
+</div>
+
+
+<div id="map"></div>
+
+
+<script
+src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
+
+<script
+src="/socket.io/socket.io.js">
+</script>
+
+
+<script>
+
+const mapa =
+    L.map("map")
+     .setView(
+        [-22.2, -48.5],
+        7
+     );
+
+
+L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+        maxZoom: 19,
+        attribution:
+            "&copy; OpenStreetMap"
+    }
+).addTo(mapa);
+
+
+let latitudeAtual = null;
+
+let longitudeAtual = null;
+
+let marcadorGPS = null;
+
+let rotaLayer = null;
+
+let marcadores = [];
+
+
+// ======================================================
+// SOCKET
+// ======================================================
+
+const socket = io();
+
+
+socket.on(
+    "connect",
+    () => {
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "Servidor conectado";
+
+    }
+);
+
+
+socket.on(
+    "atualizarLocalizacao",
+    dados => {
+
+        const lat =
+            Number(dados.latitude);
+
+        const lon =
+            Number(dados.longitude);
+
+
+        if (
+            !Number.isFinite(lat) ||
+            !Number.isFinite(lon)
+        ) {
+            return;
+        }
+
+
+        latitudeAtual = lat;
+
+        longitudeAtual = lon;
+
+
+        if (!marcadorGPS) {
+
+            marcadorGPS =
+                L.marker(
+                    [lat, lon]
+                )
+                .addTo(mapa)
+                .bindPopup(
+                    "Localização atual"
+                );
+
+        } else {
+
+            marcadorGPS.setLatLng(
+                [lat, lon]
+            );
+
+        }
+
+
+        document.getElementById(
+            "gps"
+        ).textContent =
+
+            lat.toFixed(6) +
+            ", " +
+            lon.toFixed(6);
+
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "GPS conectado";
+
+    }
+);
+let rotaAtual = null;
+
+
+// ======================================================
+// CALCULAR ROTA
+// ======================================================
+
+async function calcularRota() {
+
+
+    if (
+        latitudeAtual === null ||
+        longitudeAtual === null
+    ) {
+
+        alert(
+            "Aguardando localização GPS."
+        );
+
+        return;
+
+    }
+
+
+    const texto =
+    document.getElementById(
+        "enderecos"
+    ).value;
+
+const enderecos =
+    texto
+        .split(/\r?\n/)
+        .map(e => e.trim())
+        .filter(e => e.length > 0);
+
+console.log("ENDEREÇOS ENVIADOS:", enderecos);
+console.log("QUANTIDADE:", enderecos.length);
+
+
+    if (enderecos.length === 0) {
+
+        alert(
+            "Digite pelo menos um endereço."
+        );
+
+        return;
+
+    }
+
+
+    document.getElementById(
+        "status"
+    ).textContent =
+        "Geocodificando endereços...";
+
+
+    document.getElementById(
+        "info"
+    ).innerHTML =
+        "Aguarde...";
+
+
+    try {
+
+
+        const resposta =
+            await fetch(
+                "/rota",
+                {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            latitude:
+                                latitudeAtual,
+
+                            longitude:
+                                longitudeAtual,
+
+                            enderecos:
+                                enderecos
+
+                        })
+
+                }
+            );
+
+
+        const dados =
+            await resposta.json();
+
+
+        if (
+            !resposta.ok ||
+            !dados.sucesso
+        ) {
+
+            throw new Error(
+                dados.erro ||
+                "Erro na rota."
+            );
+
+        }
+rotaAtual = dados;
+
+gerarLinksGoogleMaps();
+
+document.getElementById(
+    "botaoEnviarRota"
+).style.display = "block";
+
+
+        // ==============================================
+        // LIMPAR
+        // ==============================================
+
+        if (rotaLayer) {
+
+            mapa.removeLayer(
+                rotaLayer
+            );
+
+        }
+
+
+        marcadores.forEach(
+            marcador =>
+                mapa.removeLayer(
+                    marcador
+                )
+        );
+
+
+        marcadores = [];
+
+
+        // ==============================================
+        // ROTA
+        // ==============================================
+
+        rotaLayer =
+            L.geoJSON(
+                dados.rota,
+                {
+
+                    style: {
+
+                        weight: 6
+
+                    }
+
+                }
+            )
+            .addTo(mapa);
+
+
+        // ==============================================
+        // DESTINOS
+        // ==============================================
+
+        dados.destinos.forEach(
+    (destino, indice) => {
+
+        const numeroEntrega =
+            indice === 0
+                ? "INÍCIO"
+                : indice;
+
+
+        const icone =
+            L.divIcon({
+
+                className:
+                    "numero-entrega",
+
+                html: `
+                    <div style="
+                        width: 32px;
+                        height: 32px;
+                        background: #1976d2;
+                        color: white;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-weight: bold;
+                        font-size: 14px;
+                        box-shadow: 0 2px 6px rgba(0,0,0,.5);
+                    ">
+                        ${numeroEntrega}
+                    </div>
+                `,
+
+                iconSize:
+                    [38, 38],
+
+                iconAnchor:
+                    [19, 19]
+
+            });
+
+
+        const marcador =
+            L.marker(
+                [
+                    destino.latitude,
+                    destino.longitude
+                ],
+                {
+                    icon: icone
+                }
+            )
+            .addTo(mapa);
+
+
+        marcador.bindPopup(
+
+            "<strong>" +
+            numeroEntrega +
+            "</strong><br><br>" +
+
+            destino.endereco
+
+        );
+
+
+        marcadores.push(
+            marcador
+        );
+
+    }
+);
+
+
+        // ==============================================
+        // ENQUADRAR
+        // ==============================================
+
+        mapa.fitBounds(
+            rotaLayer.getBounds(),
+            {
+                padding:
+                    [40, 40]
+            }
+        );
+
+
+        // ==============================================
+        // INFORMAÇÕES
+        // ==============================================
+
+        const km =
+            Number(
+                dados.distanciaKm
+            ).toFixed(2);
+
+
+        const horas =
+            Number(
+                dados.duracaoHoras
+            );
+
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "ROTA CALCULADA";
+
+
+        document.getElementById(
+            "info"
+        ).innerHTML =
+
+            "<strong>Paradas:</strong> " +
+            dados.quantidade +
+            "<br>" +
+
+            "<strong>Distância:</strong> " +
+            km +
+            " km<br>" +
+
+            "<strong>Duração:</strong> " +
+            horas.toFixed(2) +
+            " horas";
+
+
+    } catch (erro) {
+
+
+        console.error(
+            erro
+        );
+
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "ERRO";
+
+
+        document.getElementById(
+            "info"
+        ).textContent =
+            erro.message;
+
+    }
+
+}
+// ======================================================
+// GERAR LINKS GOOGLE MAPS
+// ======================================================
+
+function gerarLinksGoogleMaps() {
+
+    if (
+        !rotaAtual ||
+        !rotaAtual.origem ||
+        !Array.isArray(rotaAtual.destinos)
+    ) {
+        return;
+    }
+
+    const origem = rotaAtual.origem;
+    const destinos = rotaAtual.destinos;
+
+    const MAX_DESTINOS_POR_LINK = 10;
+
+    const links = [];
+
+    let inicio = 0;
+
+    while (inicio < destinos.length) {
+
+        const fim = Math.min(
+            inicio + MAX_DESTINOS_POR_LINK,
+            destinos.length
+        );
+
+        const pontos = [];
+
+        if (inicio === 0) {
+
+            pontos.push(origem);
+
+        } else {
+
+            pontos.push(
+                destinos[inicio - 1]
+            );
+        }
+
+        for (
+            let i = inicio;
+            i < fim;
+            i++
+        ) {
+
+            pontos.push(
+                destinos[i]
+            );
+        }
+
+        const pontoOrigem =
+            pontos[0];
+
+        const pontoDestino =
+            pontos[pontos.length - 1];
+
+        const waypoints =
+            pontos.slice(
+                1,
+                pontos.length - 1
+            );
+
+        let url =
+            "https://www.google.com/maps/dir/?api=1";
+
+        url +=
+            "&origin=" +
+            encodeURIComponent(
+                pontoOrigem.latitude +
+                "," +
+                pontoOrigem.longitude
+            );
+
+        url +=
+            "&destination=" +
+            encodeURIComponent(
+                pontoDestino.latitude +
+                "," +
+                pontoDestino.longitude
+            );
+
+        if (waypoints.length > 0) {
+
+            url +=
+                "&waypoints=" +
+                encodeURIComponent(
+                    waypoints
+                        .map(p =>
+                            p.latitude +
+                            "," +
+                            p.longitude
+                        )
+                        .join("|")
+                );
+        }
+
+        url +=
+            "&travelmode=driving";
+
+        links.push({
+            numero:
+                links.length + 1,
+
+            inicio:
+                inicio + 1,
+
+            fim:
+                fim,
+
+            url:
+                url
+        });
+
+        inicio = fim;
+    }
+
+    const container =
+        document.getElementById(
+            "listaLinksRotas"
+        );
+
+    container.innerHTML = "";
+
+    links.forEach(link => {
+
+        const bloco =
+            document.createElement(
+                "div"
+            );
+
+        bloco.style.marginTop =
+            "10px";
+
+        bloco.style.padding =
+            "10px";
+
+        bloco.style.border =
+            "1px solid #ddd";
+
+        bloco.style.borderRadius =
+            "8px";
+
+        const titulo =
+            document.createElement(
+                "strong"
+            );
+
+        titulo.textContent =
+            "ROTA " +
+            link.numero +
+            " — Entregas " +
+            link.inicio +
+            " até " +
+            link.fim;
+
+        const campo =
+            document.createElement(
+                "input"
+            );
+
+        campo.type =
+            "text";
+
+        campo.value =
+            link.url;
+
+        campo.readOnly =
+            true;
+
+        campo.style.width =
+            "100%";
+
+        campo.style.boxSizing =
+            "border-box";
+
+        campo.style.marginTop =
+            "6px";
+
+        campo.style.padding =
+            "8px";
+
+        const botao =
+            document.createElement(
+                "button"
+            );
+
+        botao.textContent =
+            "COPIAR LINK";
+
+        botao.style.marginTop =
+            "6px";
+
+        botao.onclick =
+            async function () {
+
+                try {
+
+                    await navigator
+                        .clipboard
+                        .writeText(
+                            link.url
+                        );
+
+                    botao.textContent =
+                        "LINK COPIADO ✓";
+
+                    setTimeout(
+                        function () {
+
+                            botao.textContent =
+                                "COPIAR LINK";
+
+                        },
+                        2000
+                    );
+
+                } catch (erro) {
+
+                    campo.select();
+
+                    document.execCommand(
+                        "copy"
+                    );
+
+                    botao.textContent =
+                        "LINK COPIADO ✓";
+                }
+            };
+
+        bloco.appendChild(
+            titulo
+        );
+
+        bloco.appendChild(
+            document.createElement(
+                "br"
+            )
+        );
+
+        bloco.appendChild(
+            campo
+        );
+
+        bloco.appendChild(
+            botao
+        );
+
+        container.appendChild(
+            bloco
+        );
+    });
+
+    document.getElementById(
+        "linksRotas"
+    ).style.display =
+        "block";
+}
+// ======================================================
+// ENVIAR ROTA PARA CELULAR
+// ======================================================
+
+async function enviarRotaParaCelular() {
+
+    if (!rotaAtual) {
+
+        alert(
+            "Calcule uma rota primeiro."
+        );
+
+        return;
+
+    }
+
+
+    const botao =
+        document.getElementById(
+            "botaoEnviarRota"
+        );
+
+
+    botao.disabled = true;
+
+    botao.textContent =
+        "ENVIANDO ROTA...";
+
+
+    try {
+
+        const resposta =
+            await fetch(
+                "/enviar-rota",
+                {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            rotaAtual
+                        )
+
+                }
+            );
+
+
+        const resultado =
+            await resposta.json();
+
+
+        if (
+            !resposta.ok ||
+            !resultado.sucesso
+        ) {
+
+            throw new Error(
+                resultado.erro ||
+                "Não foi possível enviar a rota."
+            );
+
+        }
+
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "ROTA ENVIADA PARA O CELULAR";
+
+
+        document.getElementById(
+            "info"
+        ).innerHTML +=
+            "<br><strong>✓ Rota enviada para o celular.</strong>";
+
+
+        botao.textContent =
+            "ROTA ENVIADA ✓";
+
+
+    } catch (erro) {
+
+        alert(
+            erro.message
+        );
+
+        botao.textContent =
+            "ENVIAR ROTA PARA CELULAR";
+
+    }
+
+
+    botao.disabled = false;
+
+}
+
+</script>
+
+</body>
+
+</html>
