@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -16,6 +17,8 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import org.json.JSONObject;
+
+import java.util.UUID;
 
 import io.socket.client.IO;
 import io.socket.client.Socket;
@@ -34,6 +37,14 @@ public class LocationService extends Service {
 
     private Socket socket;
 
+    // Identificação deste celular
+    private String aparelhoId;
+    private String nomeAparelho;
+
+
+    // =========================================================
+    // ON CREATE
+    // =========================================================
 
     @Override
     public void onCreate() {
@@ -44,12 +55,85 @@ public class LocationService extends Service {
 
         iniciarNotificacao();
 
+        prepararIdentificacao();
+
         conectarSocket();
 
         iniciarGPS();
-
     }
 
+
+    // =========================================================
+    // IDENTIFICAÇÃO DO APARELHO
+    // =========================================================
+
+    private void prepararIdentificacao() {
+
+        SharedPreferences preferencias =
+                getSharedPreferences(
+                        "localizacao",
+                        MODE_PRIVATE
+                );
+
+        // Tenta recuperar o ID que já foi criado anteriormente
+        aparelhoId =
+                preferencias.getString(
+                        "aparelho_id",
+                        null
+                );
+
+
+        // Se ainda não existe, cria um ID único
+        if (aparelhoId == null) {
+
+            aparelhoId =
+                    UUID.randomUUID().toString();
+
+            preferencias
+                    .edit()
+                    .putString(
+                            "aparelho_id",
+                            aparelhoId
+                    )
+                    .apply();
+        }
+
+
+        // Nome padrão baseado no modelo do celular
+        String nomePadrao =
+                android.os.Build.MANUFACTURER
+                        + " "
+                        + android.os.Build.MODEL;
+
+
+        nomeAparelho =
+                preferencias.getString(
+                        "nome_aparelho",
+                        nomePadrao
+                );
+
+
+        System.out.println(
+                "================================="
+        );
+
+        System.out.println(
+                "APARELHO ID: " + aparelhoId
+        );
+
+        System.out.println(
+                "NOME: " + nomeAparelho
+        );
+
+        System.out.println(
+                "================================="
+        );
+    }
+
+
+    // =========================================================
+    // CRIAR CANAL DA NOTIFICAÇÃO
+    // =========================================================
 
     private void criarCanal() {
 
@@ -60,15 +144,25 @@ public class LocationService extends Service {
                         NotificationManager.IMPORTANCE_LOW
                 );
 
+
         NotificationManager manager =
                 getSystemService(
                         NotificationManager.class
                 );
 
-        manager.createNotificationChannel(canal);
 
+        if (manager != null) {
+
+            manager.createNotificationChannel(
+                    canal
+            );
+        }
     }
 
+
+    // =========================================================
+    // NOTIFICAÇÃO DO SERVIÇO
+    // =========================================================
 
     private void iniciarNotificacao() {
 
@@ -94,9 +188,12 @@ public class LocationService extends Service {
                 1001,
                 notification
         );
-
     }
 
+
+    // =========================================================
+    // CONEXÃO SOCKET.IO
+    // =========================================================
 
     private void conectarSocket() {
 
@@ -106,70 +203,113 @@ public class LocationService extends Service {
                     IO.socket(SERVIDOR);
 
 
-           socket.on(
-        Socket.EVENT_CONNECT,
-        args -> {
+            // -------------------------------------------------
+            // SOCKET CONECTADO
+            // -------------------------------------------------
 
-            System.out.println(
-                    "Socket conectado"
-            );
+            socket.on(
+                    Socket.EVENT_CONNECT,
+                    args -> {
 
-            socket.emit(
-                    "registrarCelular"
-            );
-
-        }
-);
-socket.on(
-        "receberRota",
-        args -> {
-
-            if (
-                    args == null ||
-                    args.length == 0
-            ) {
-
-                return;
-
-            }
-
-
-            try {
-
-                JSONObject rota =
-                        (JSONObject) args[0];
-
-
-                android.content.SharedPreferences
-                        preferencias =
-                        getSharedPreferences(
-                                "localizacao",
-                                MODE_PRIVATE
+                        System.out.println(
+                                "Socket conectado"
                         );
 
 
-                preferencias
-                        .edit()
-                        .putString(
-                                "rota_recebida",
-                                rota.toString()
-                        )
-                        .apply();
+                        try {
+
+                            // Envia a identificação deste celular
+                            JSONObject registro =
+                                    new JSONObject();
 
 
-                System.out.println(
-                        "ROTA RECEBIDA NO CELULAR"
-                );
+                            registro.put(
+                                    "aparelhoId",
+                                    aparelhoId
+                            );
 
 
-            } catch (Exception e) {
+                            registro.put(
+                                    "nome",
+                                    nomeAparelho
+                            );
 
-                e.printStackTrace();
 
-            }
+                            socket.emit(
+                                    "registrarCelular",
+                                    registro
+                            );
 
-        }
-);
+
+                            System.out.println(
+                                    "Celular registrado: "
+                                            + aparelhoId
+                            );
+
+
+                        } catch (Exception e) {
+
+                            e.printStackTrace();
+                        }
+                    }
+            );
+
+
+            // -------------------------------------------------
+            // RECEBER ROTA
+            // -------------------------------------------------
+
+            socket.on(
+                    "receberRota",
+                    args -> {
+
+                        if (
+                                args == null ||
+                                args.length == 0
+                        ) {
+
+                            return;
+                        }
+
+
+                        try {
+
+                            JSONObject rota =
+                                    (JSONObject) args[0];
+
+
+                            SharedPreferences preferencias =
+                                    getSharedPreferences(
+                                            "localizacao",
+                                            MODE_PRIVATE
+                                    );
+
+
+                            preferencias
+                                    .edit()
+                                    .putString(
+                                            "rota_recebida",
+                                            rota.toString()
+                                    )
+                                    .apply();
+
+
+                            System.out.println(
+                                    "ROTA RECEBIDA NO CELULAR"
+                            );
+
+
+                        } catch (Exception e) {
+
+                            e.printStackTrace();
+                        }
+                    }
+            );
+
+
+            // -------------------------------------------------
+            // SOCKET DESCONECTADO
+            // -------------------------------------------------
 
             socket.on(
                     Socket.EVENT_DISCONNECT,
@@ -178,10 +318,13 @@ socket.on(
                         System.out.println(
                                 "Socket desconectado"
                         );
-
                     }
             );
 
+
+            // -------------------------------------------------
+            // ERRO DE CONEXÃO
+            // -------------------------------------------------
 
             socket.on(
                     Socket.EVENT_CONNECT_ERROR,
@@ -190,21 +333,27 @@ socket.on(
                         System.out.println(
                                 "Erro de conexão Socket"
                         );
-
                     }
             );
 
 
+            // -------------------------------------------------
+            // CONECTAR
+            // -------------------------------------------------
+
             socket.connect();
+
 
         } catch (Exception e) {
 
             e.printStackTrace();
-
         }
-
     }
 
+
+    // =========================================================
+    // INICIAR GPS
+    // =========================================================
 
     private void iniciarGPS() {
 
@@ -226,12 +375,11 @@ socket.on(
                         enviarLocalizacao(
                                 location
                         );
-
                     }
-
                 };
 
 
+        // Verifica permissão GPS
         if (
                 checkSelfPermission(
                         Manifest.permission.ACCESS_FINE_LOCATION
@@ -244,8 +392,11 @@ socket.on(
                 != PackageManager.PERMISSION_GRANTED
         ) {
 
-            return;
+            System.out.println(
+                    "Permissão de localização não concedida"
+            );
 
+            return;
         }
 
 
@@ -263,19 +414,28 @@ socket.on(
 
             );
 
+
+            System.out.println(
+                    "GPS iniciado"
+            );
+
+
         } catch (SecurityException e) {
 
             e.printStackTrace();
-
         }
-
     }
 
+
+    // =========================================================
+    // ENVIAR LOCALIZAÇÃO
+    // =========================================================
 
     private void enviarLocalizacao(
             Location location
     ) {
 
+        // Se não estiver conectado, tenta reconectar
         if (
                 socket == null ||
                 !socket.connected()
@@ -284,7 +444,6 @@ socket.on(
             tentarReconectar();
 
             return;
-
         }
 
 
@@ -293,6 +452,26 @@ socket.on(
             JSONObject dados =
                     new JSONObject();
 
+
+            // -------------------------------------------------
+            // IDENTIFICAÇÃO DO APARELHO
+            // -------------------------------------------------
+
+            dados.put(
+                    "aparelhoId",
+                    aparelhoId
+            );
+
+
+            dados.put(
+                    "nome",
+                    nomeAparelho
+            );
+
+
+            // -------------------------------------------------
+            // GPS
+            // -------------------------------------------------
 
             dados.put(
                     "latitude",
@@ -318,44 +497,57 @@ socket.on(
             );
 
 
+            // -------------------------------------------------
+            // ENVIAR PARA O SERVIDOR
+            // -------------------------------------------------
+
             socket.emit(
                     "localizacao",
                     dados
             );
 
 
+            System.out.println(
+                    "Localização enviada: "
+                            + aparelhoId
+                            + " | "
+                            + location.getLatitude()
+                            + " | "
+                            + location.getLongitude()
+            );
+
+
         } catch (Exception e) {
 
             e.printStackTrace();
-
         }
-
     }
 
 
+    // =========================================================
+    // TENTAR RECONEXÃO
+    // =========================================================
+
     private void tentarReconectar() {
 
-        if (
-                socket == null
-        ) {
+        if (socket == null) {
 
             conectarSocket();
 
             return;
-
         }
 
 
-        if (
-                !socket.connected()
-        ) {
+        if (!socket.connected()) {
 
             socket.connect();
-
         }
-
     }
 
+
+    // =========================================================
+    // START COMMAND
+    // =========================================================
 
     @Override
     public int onStartCommand(
@@ -365,9 +557,12 @@ socket.on(
     ) {
 
         return START_STICKY;
-
     }
 
+
+    // =========================================================
+    // DESTRUIR SERVIÇO
+    // =========================================================
 
     @Override
     public void onDestroy() {
@@ -380,7 +575,6 @@ socket.on(
             locationManager.removeUpdates(
                     locationListener
             );
-
         }
 
 
@@ -389,14 +583,16 @@ socket.on(
             socket.disconnect();
 
             socket.close();
-
         }
 
 
         super.onDestroy();
-
     }
 
+
+    // =========================================================
+    // BIND
+    // =========================================================
 
     @Nullable
     @Override
@@ -405,7 +601,5 @@ socket.on(
     ) {
 
         return null;
-
     }
-
 }

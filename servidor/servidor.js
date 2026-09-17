@@ -26,7 +26,8 @@ app.use(express.static(
 // CELULAR CONECTADO
 // ======================================================
 
-let celularSocket = null;
+const aparelhos = new Map();
+const LIMITE_APARELHOS = 100;
 
 
 // ======================================================
@@ -36,12 +37,21 @@ let celularSocket = null;
 app.get("/status", (req, res) => {
 
     res.json({
-        servidor: "online",
-        porta: 3000,
-        roteirizacao: "OSRM",
-        celularConectado:
-            celularSocket !== null
-    });
+    servidor: "online",
+    porta: 3000,
+    roteirizacao: "OSRM",
+
+    celularConectado:
+        [...aparelhos.values()].some(a => a.online),
+
+    quantidadeAparelhos:
+        aparelhos.size,
+
+    aparelhosOnline:
+        [...aparelhos.values()]
+            .filter(a => a.online)
+            .length
+});
 
 });
 
@@ -648,18 +658,26 @@ app.post(
     "/enviar-rota",
     (req, res) => {
 
-        if (!celularSocket) {
+        const conectados =
+    [...aparelhos.values()]
+        .filter(
+            aparelho =>
+                aparelho.online &&
+                aparelho.socket
+        );
 
-            return res.status(503).json({
+if (conectados.length === 0) {
 
-                sucesso: false,
+    return res.status(503).json({
 
-                erro:
-                    "Celular não conectado."
+        sucesso: false,
 
-            });
+        erro:
+            "Nenhum celular conectado."
 
-        }
+    });
+
+}
 
 
         const rota =
@@ -686,10 +704,16 @@ app.post(
         }
 
 
-        celularSocket.emit(
+        conectados.forEach(
+    aparelho => {
+
+        aparelho.socket.emit(
             "receberRota",
             rota
         );
+
+    }
+);
 
 
         console.log(
@@ -714,6 +738,10 @@ app.post(
 // SOCKET
 // ======================================================
 
+// ======================================================
+// SOCKET — MÚLTIPLOS APARELHOS
+// ======================================================
+
 io.on(
     "connection",
     socket => {
@@ -723,32 +751,121 @@ io.on(
             socket.id
         );
 
+        // Envia para o mapa os aparelhos já cadastrados
+        socket.emit(
+            "listaAparelhos",
+            [...aparelhos.values()].map(
+                aparelho => ({
+                    aparelhoId: aparelho.aparelhoId,
+                    nome: aparelho.nome,
+                    latitude: aparelho.latitude,
+                    longitude: aparelho.longitude,
+                    precisao: aparelho.precisao,
+                    horario: aparelho.horario,
+                    online: aparelho.online
+                })
+            )
+        );
 
         // ==================================================
-        // REGISTRAR CELULAR
+        // REGISTRAR APARELHO
         // ==================================================
 
         socket.on(
             "registrarCelular",
-            () => {
+            dados => {
 
-                celularSocket = socket;
+                const aparelhoId =
+                    String(
+                        dados?.aparelhoId ||
+                        socket.id
+                    );
+
+                const nome =
+                    String(
+                        dados?.nome ||
+                        `Celular ${aparelhos.size + 1}`
+                    ).trim();
+
+                let aparelho =
+                    aparelhos.get(aparelhoId);
+
+                // Limite de 100 aparelhos
+                if (
+                    !aparelho &&
+                    aparelhos.size >= LIMITE_APARELHOS
+                ) {
+
+                    socket.emit(
+                        "erroAparelho",
+                        {
+                            erro:
+                                `Limite de ${LIMITE_APARELHOS} aparelhos atingido.`
+                        }
+                    );
+
+                    return;
+                }
+
+                // Novo aparelho
+                if (!aparelho) {
+
+                    aparelho = {
+                        aparelhoId: aparelhoId,
+                        nome: nome,
+                        socket: socket,
+
+                        latitude: null,
+                        longitude: null,
+                        precisao: null,
+                        horario: null,
+
+                        online: true
+                    };
+
+                    aparelhos.set(
+                        aparelhoId,
+                        aparelho
+                    );
+
+                } else {
+
+                    // Aparelho já existente reconectou
+                    aparelho.nome = nome;
+                    aparelho.socket = socket;
+                    aparelho.online = true;
+                }
 
                 console.log(
                     "CELULAR REGISTRADO:",
-                    socket.id
+                    aparelhoId,
+                    nome
                 );
 
                 socket.emit(
                     "statusCelular",
                     {
-                        conectado: true
+                        conectado: true,
+                        aparelhoId: aparelhoId,
+                        nome: nome
                     }
                 );
 
+                // Avisar o mapa
+                io.emit(
+                    "aparelhoAtualizado",
+                    {
+                        aparelhoId: aparelho.aparelhoId,
+                        nome: aparelho.nome,
+                        latitude: aparelho.latitude,
+                        longitude: aparelho.longitude,
+                        precisao: aparelho.precisao,
+                        horario: aparelho.horario,
+                        online: true
+                    }
+                );
             }
         );
-
 
         // ==================================================
         // GPS
@@ -760,58 +877,128 @@ io.on(
 
                 const latitude =
                     Number(
-                        dados.latitude
+                        dados?.latitude
                     );
 
                 const longitude =
                     Number(
-                        dados.longitude
+                        dados?.longitude
                     );
 
                 const precisao =
                     Number(
-                        dados.precisao
+                        dados?.precisao
                     );
 
-
                 if (
-                    !Number.isFinite(
-                        latitude
-                    ) ||
-                    !Number.isFinite(
-                        longitude
-                    )
+                    !Number.isFinite(latitude) ||
+                    !Number.isFinite(longitude)
                 ) {
-
                     return;
-
                 }
 
+                const aparelhoId =
+                    String(
+                        dados?.aparelhoId ||
+                        socket.id
+                    );
+
+                let aparelho =
+                    aparelhos.get(aparelhoId);
+
+                // Se o aparelho ainda não estiver
+                // registrado, cria automaticamente.
+                if (!aparelho) {
+
+                    if (
+                        aparelhos.size >=
+                        LIMITE_APARELHOS
+                    ) {
+
+                        console.log(
+                            "LIMITE DE APARELHOS ATINGIDO"
+                        );
+
+                        return;
+                    }
+
+                    aparelho = {
+
+                        aparelhoId: aparelhoId,
+
+                        nome:
+                            String(
+                                dados?.nome ||
+                                `Celular ${aparelhos.size + 1}`
+                            ),
+
+                        socket: socket,
+
+                        latitude: null,
+                        longitude: null,
+                        precisao: null,
+                        horario: null,
+
+                        online: true
+                    };
+
+                    aparelhos.set(
+                        aparelhoId,
+                        aparelho
+                    );
+                }
+
+                // Atualiza os dados desse aparelho
+                aparelho.socket = socket;
+
+                aparelho.latitude =
+                    latitude;
+
+                aparelho.longitude =
+                    longitude;
+
+                aparelho.precisao =
+                    precisao;
+
+                aparelho.horario =
+                    Date.now();
+
+                aparelho.online =
+                    true;
 
                 console.log(
-                    `GPS: ${latitude}, ${longitude} | precisão: ${precisao}m`
+                    `GPS [${aparelho.nome}]: ${latitude}, ${longitude} | precisão: ${precisao}m`
                 );
 
-
+                // Envia somente os dados identificados
+                // desse aparelho para todos os mapas.
                 io.emit(
                     "atualizarLocalizacao",
                     {
+                        aparelhoId:
+                            aparelho.aparelhoId,
 
-                        latitude,
+                        nome:
+                            aparelho.nome,
 
-                        longitude,
+                        latitude:
+                            latitude,
 
-                        precisao,
+                        longitude:
+                            longitude,
+
+                        precisao:
+                            precisao,
 
                         horario:
-                            Date.now()
+                            aparelho.horario,
 
+                        online:
+                            true
                     }
                 );
-
             }
         );
-
 
         // ==================================================
         // DESCONECTAR
@@ -826,19 +1013,54 @@ io.on(
                     socket.id
                 );
 
-
-                if (
-                    celularSocket === socket
+                // Procura qual aparelho pertencia
+                // a este Socket.
+                for (
+                    const aparelho
+                    of aparelhos.values()
                 ) {
 
-                    celularSocket = null;
+                    if (
+                        aparelho.socket === socket
+                    ) {
 
-                    console.log(
-                        "CELULAR DESCONECTADO"
-                    );
+                        // Não apaga o aparelho.
+                        // Apenas marca como offline.
+                        aparelho.online =
+                            false;
 
+                        aparelho.socket =
+                            null;
+
+                        // Avisar o mapa
+                        io.emit(
+                            "aparelhoAtualizado",
+                            {
+                                aparelhoId:
+                                    aparelho.aparelhoId,
+
+                                nome:
+                                    aparelho.nome,
+
+                                latitude:
+                                    aparelho.latitude,
+
+                                longitude:
+                                    aparelho.longitude,
+
+                                precisao:
+                                    aparelho.precisao,
+
+                                horario:
+                                    aparelho.horario,
+
+                                online:
+                                    false
+                            }
+                        );
+
+                    }
                 }
-
             }
         );
 
