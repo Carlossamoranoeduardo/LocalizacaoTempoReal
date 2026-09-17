@@ -113,31 +113,11 @@ button:hover {
 
 }
 
-
-#telaLogin{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#f2f2f2}
-#caixaLogin{width:340px;max-width:90%;background:white;padding:25px;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:Arial}
-#caixaLogin h2{text-align:center}
-#caixaLogin input{width:100%;box-sizing:border-box;padding:12px;margin-top:10px;border:1px solid #ccc;border-radius:8px;font-size:15px}
-#caixaLogin button{margin-top:15px}
-#erroLogin{color:#c62828;font-weight:bold;margin-top:10px;text-align:center}
-#botaoExportarRelatorio{display:none;background:#6a1b9a}
-
 </style>
 
 </head>
 
 <body>
-
-<div id="telaLogin">
-<div id="caixaLogin">
-<h2>Roteirizador</h2>
-<input id="usuarioLogin" type="text" placeholder="Usuário" autocomplete="username">
-<input id="senhaLogin" type="password" placeholder="Senha" autocomplete="current-password">
-<button onclick="entrarSistema()">ENTRAR</button>
-<div id="erroLogin"></div>
-</div>
-</div>
-
 
 
 <div id="painel">
@@ -184,11 +164,6 @@ Rua Z, 200, Santos - SP"></textarea>
     ENVIAR ROTA PARA CELULAR
 
 </button>
-
-<button id="botaoExportarRelatorio" onclick="exportarRelatorio()">
-    EXPORTAR RELATÓRIO
-</button>
-
 <div id="linksRotas" style="display:none;margin-top:15px;">
     <strong>LINKS DA ROTA PARA WHATSAPP</strong>
 
@@ -221,46 +196,6 @@ src="/socket.io/socket.io.js">
 
 
 <script>
-
-function entrarSistema(){
-    const usuario=document.getElementById("usuarioLogin").value.trim();
-    const senha=document.getElementById("senhaLogin").value;
-    if(usuario==="carlos eduardo" && senha==="12345"){
-        document.getElementById("telaLogin").style.display="none";
-    }else{
-        document.getElementById("erroLogin").textContent="Usuário ou senha incorretos.";
-    }
-}
-document.addEventListener("keydown",function(e){
-    if(e.key==="Enter" && document.getElementById("telaLogin").style.display!=="none") entrarSistema();
-});
-
-function exportarRelatorio(){
-    if(!rotaAtual){alert("Calcule uma rota primeiro.");return;}
-    const origem=rotaAtual.origem||{};
-    const destinos=Array.isArray(rotaAtual.destinos)?rotaAtual.destinos:[];
-    let r="RELATÓRIO DE ROTA\n==============================\n\n";
-    r+="ORIGEM\nLatitude: "+(origem.latitude??"")+"\nLongitude: "+(origem.longitude??"")+"\n\n";
-    r+="RESUMO\nParadas: "+(rotaAtual.quantidade??destinos.length)+"\n";
-    r+="Distância: "+Number(rotaAtual.distanciaKm||0).toFixed(2)+" km\n";
-    r+="Duração: "+Number(rotaAtual.duracaoHoras||0).toFixed(2)+" horas\n\n";
-    r+="SEQUÊNCIA DAS ENTREGAS\n==============================\n\n";
-    destinos.forEach((d,i)=>{
-        r+=(i+1)+" - "+(d.endereco||"Endereço não informado")+"\n";
-        r+="    Latitude: "+(d.latitude??"")+"\n";
-        r+="    Longitude: "+(d.longitude??"")+"\n\n";
-    });
-    const blob=new Blob([r],{type:"text/plain;charset=utf-8"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download="relatorio-rota.txt";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-}
-
 
 const mapa =
     L.map("map")
@@ -487,10 +422,6 @@ gerarLinksGoogleMaps();
 
 document.getElementById(
     "botaoEnviarRota"
-).style.display = "block";
-
-document.getElementById(
-    "botaoExportarRelatorio"
 ).style.display = "block";
 
 

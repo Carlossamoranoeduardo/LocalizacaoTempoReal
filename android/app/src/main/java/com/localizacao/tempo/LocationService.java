@@ -23,7 +23,7 @@ import io.socket.client.Socket;
 public class LocationService extends Service {
 
     private static final String SERVIDOR =
-            "http://192.168.10.114:3000";
+            "https://localizacaotemporeal.onrender.com";
 
     private static final String CHANNEL_ID =
             "localizacao_tempo_real";
