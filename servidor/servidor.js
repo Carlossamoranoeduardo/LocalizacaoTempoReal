@@ -28,7 +28,147 @@ app.use(express.static(
 
 const aparelhos = new Map();
 const LIMITE_APARELHOS = 100;
+// ======================================================
+// HISTÓRICO DE PERCURSOS
+// ======================================================
 
+const pastaHistorico = path.join(__dirname, "historico");
+
+if (!require("fs").existsSync(pastaHistorico)) {
+    require("fs").mkdirSync(pastaHistorico, {
+        recursive: true
+    });
+}
+
+function salvarPontoHistorico(dados) {
+
+    try {
+
+        const aparelhoId =
+            String(dados.aparelhoId || "desconhecido");
+
+        const data = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo"
+});
+
+        const pastaAparelho =
+            path.join(
+                pastaHistorico,
+                aparelhoId
+            );
+
+        if (!require("fs").existsSync(pastaAparelho)) {
+            require("fs").mkdirSync(
+                pastaAparelho,
+                { recursive: true }
+            );
+        }
+
+        const arquivo =
+            path.join(
+                pastaAparelho,
+                `${data}.json`
+            );
+
+        let pontos = [];
+
+        if (require("fs").existsSync(arquivo)) {
+
+            try {
+                pontos =
+                    JSON.parse(
+                        require("fs").readFileSync(
+                            arquivo,
+                            "utf8"
+                        )
+                    );
+
+                if (!Array.isArray(pontos)) {
+                    pontos = [];
+                }
+
+            } catch {
+                pontos = [];
+            }
+        }
+
+        pontos.push({
+            latitude: Number(dados.latitude),
+            longitude: Number(dados.longitude),
+            precisao: Number(dados.precisao),
+            horario: Number(dados.horario || Date.now())
+        });
+
+        require("fs").writeFileSync(
+            arquivo,
+            JSON.stringify(
+                pontos,
+                null,
+                2
+            ),
+            "utf8"
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO AO SALVAR HISTÓRICO:",
+            erro.message
+        );
+
+    }
+}
+// ======================================================
+// TESTE MANUAL DO HISTÓRICO
+// ======================================================
+
+app.post("/teste-historico", (req, res) => {
+
+    try {
+
+        const agora = Date.now();
+
+        const pontosTeste = [
+            [-20.811000, -49.376000],
+            [-20.812000, -49.377000],
+            [-20.813000, -49.378000],
+            [-20.814000, -49.379000],
+            [-20.815000, -49.380000]
+        ];
+
+        pontosTeste.forEach((ponto, indice) => {
+
+            salvarPontoHistorico({
+                aparelhoId: "TESTE",
+                latitude: ponto[0],
+                longitude: ponto[1],
+                precisao: 5,
+                horario: agora + (indice * 10000)
+            });
+
+        });
+
+        res.json({
+            sucesso: true,
+            mensagem: "Pontos de teste gravados",
+            quantidade: pontosTeste.length
+        });
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO NO TESTE:",
+            erro
+        );
+
+        res.status(500).json({
+            sucesso: false,
+            erro: erro.message
+        });
+
+    }
+
+});
 
 // ======================================================
 // STATUS
@@ -54,6 +194,96 @@ app.get("/status", (req, res) => {
 });
 
 });
+// ======================================================
+// CONSULTAR HISTÓRICO DE PERCURSO
+// ======================================================
+
+app.get(
+    "/historico/:aparelhoId/:data",
+    (req, res) => {
+
+        try {
+
+            const aparelhoId =
+                String(req.params.aparelhoId);
+
+            const data =
+                String(req.params.data);
+
+            // Aceita somente datas no formato YYYY-MM-DD
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+
+                return res.status(400).json({
+                    sucesso: false,
+                    erro: "Data inválida. Use YYYY-MM-DD."
+                });
+
+            }
+
+            const arquivo =
+                path.join(
+                    pastaHistorico,
+                    aparelhoId,
+                    `${data}.json`
+                );
+
+            if (!require("fs").existsSync(arquivo)) {
+
+                return res.json({
+                    sucesso: true,
+                    aparelhoId: aparelhoId,
+                    data: data,
+                    quantidade: 0,
+                    pontos: []
+                });
+
+            }
+
+            const conteudo =
+                require("fs").readFileSync(
+                    arquivo,
+                    "utf8"
+                );
+
+            let pontos = [];
+
+            try {
+                pontos = JSON.parse(conteudo);
+            } catch {
+
+                return res.status(500).json({
+                    sucesso: false,
+                    erro: "Arquivo de histórico inválido."
+                });
+
+            }
+
+            if (!Array.isArray(pontos)) {
+                pontos = [];
+            }
+
+            res.json({
+                sucesso: true,
+                aparelhoId: aparelhoId,
+                data: data,
+                quantidade: pontos.length,
+                pontos: pontos
+            });
+
+        } catch (erro) {
+
+            console.error(
+                "ERRO AO CONSULTAR HISTÓRICO:",
+                erro.message
+            );
+
+            res.status(500).json({
+                sucesso: false,
+                erro: erro.message
+            });
+        }
+    }
+);
 
 
 // ======================================================
@@ -961,14 +1191,22 @@ io.on(
                     precisao;
 
                 aparelho.horario =
-                    Date.now();
+    Date.now();
 
-                aparelho.online =
-                    true;
+aparelho.online =
+    true;
 
-                console.log(
-                    `GPS [${aparelho.nome}]: ${latitude}, ${longitude} | precisão: ${precisao}m`
-                );
+salvarPontoHistorico({
+    aparelhoId: aparelho.aparelhoId,
+    latitude: latitude,
+    longitude: longitude,
+    precisao: precisao,
+    horario: aparelho.horario
+});
+
+console.log(
+    `GPS [${aparelho.nome}]: ${latitude}, ${longitude} | precisão: ${precisao}m`
+);
 
                 // Envia somente os dados identificados
                 // desse aparelho para todos os mapas.

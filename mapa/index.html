@@ -276,6 +276,106 @@ Rua Z, 200, Santos - SP"
         </div>
 
     </div>
+<!-- =====================================================
+     HISTÓRICO DO PERCURSO
+====================================================== -->
+
+<div id="painelHistorico" style="
+    margin-top:20px;
+    padding:15px;
+    background:white;
+    border-radius:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.20);
+">
+
+    <h3 style="
+        margin-top:0;
+        color:#333;
+    ">
+        HISTÓRICO DO PERCURSO
+    </h3>
+
+    <label>
+        <strong>CELULAR:</strong>
+    </label>
+
+    <select id="historicoAparelho" style="
+        width:100%;
+        padding:10px;
+        margin:8px 0 12px 0;
+        border-radius:6px;
+        border:1px solid #aaa;
+    ">
+        <option value="">
+            Selecione o celular
+        </option>
+    </select>
+
+    <label>
+        <strong>DATA:</strong>
+    </label>
+
+    <input
+        type="date"
+        id="historicoData"
+        style="
+            width:100%;
+            padding:10px;
+            margin:8px 0 12px 0;
+            border-radius:6px;
+            border:1px solid #aaa;
+            box-sizing:border-box;
+        "
+    >
+
+    <button
+        onclick="verHistorico()"
+        style="
+            width:100%;
+            padding:12px;
+            border:0;
+            border-radius:6px;
+            background:#1976d2;
+            color:white;
+            font-weight:bold;
+            cursor:pointer;
+        "
+    >
+        VER PERCURSO
+    </button>
+
+    <button
+        onclick="limparHistorico()"
+        style="
+            width:100%;
+            padding:12px;
+            margin-top:8px;
+            border:0;
+            border-radius:6px;
+            background:#777;
+            color:white;
+            font-weight:bold;
+            cursor:pointer;
+        "
+    >
+        LIMPAR PERCURSO
+    </button>
+
+    <div
+        id="historicoInfo"
+        style="
+            margin-top:12px;
+            font-weight:bold;
+            color:#333;
+        "
+    ></div>
+
+</div>
+ <!-- =================================================
+     HISTÓRICO DE PERCURSOS
+================================================== -->
+
+
 
 
     <!-- =================================================
@@ -415,6 +515,15 @@ let rotaAtual = null;
 let rotaLayer = null;
 
 let marcadores = [];
+let historicoLayer = null;
+
+
+
+
+// ======================================================
+// HISTÓRICO DE PERCURSO
+// ======================================================
+
 
 
 /*
@@ -978,6 +1087,7 @@ function renderizarListaAparelhos() {
 
         }
     );
+    atualizarSelectHistorico();
 
 }
 
@@ -1022,6 +1132,366 @@ function alternarLocalizacao(
 
     renderizarListaAparelhos();
 
+}
+/* ======================================================
+   HISTÓRICO DE PERCURSOS
+====================================================== */
+
+function atualizarSelectHistorico() {
+
+    const select =
+        document.getElementById(
+            "historicoAparelho"
+        );
+
+    if (!select) {
+        return;
+    }
+
+    const valorAtual =
+        select.value;
+
+    select.innerHTML = "";
+
+    const opcaoInicial =
+        document.createElement("option");
+
+    opcaoInicial.value = "";
+
+    opcaoInicial.textContent =
+        "Selecione um aparelho";
+
+    select.appendChild(
+        opcaoInicial
+    );
+
+    Object.keys(aparelhosMapa)
+        .forEach(
+            function(id) {
+
+                const aparelho =
+                    aparelhosMapa[id];
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+                option.value =
+                    id;
+
+                option.textContent =
+                    aparelho.nome;
+
+                select.appendChild(
+                    option
+                );
+            }
+        );
+
+    if (
+        valorAtual &&
+        aparelhosMapa[valorAtual]
+    ) {
+
+        select.value =
+            valorAtual;
+    }
+}
+
+
+/* ======================================================
+   VER PERCURSO
+====================================================== */
+
+async function verHistorico() {
+
+    const aparelhoId =
+        document.getElementById(
+            "historicoAparelho"
+        ).value;
+
+    const data =
+        document.getElementById(
+            "historicoData"
+        ).value;
+
+    const info =
+        document.getElementById(
+            "historicoInfo"
+        );
+
+    if (!aparelhoId) {
+
+        alert(
+            "Selecione um aparelho."
+        );
+
+        return;
+    }
+
+    if (!data) {
+
+        alert(
+            "Selecione uma data."
+        );
+
+        return;
+    }
+
+    info.textContent =
+        "Carregando percurso...";
+
+    try {
+
+        const resposta =
+            await fetch(
+                `/historico/${encodeURIComponent(aparelhoId)}/${data}`
+            );
+
+        const dados =
+            await resposta.json();
+
+        if (
+            !resposta.ok ||
+            !dados.sucesso
+        ) {
+
+            throw new Error(
+                dados.erro ||
+                "Erro ao carregar histórico."
+            );
+        }
+
+        if (
+            !Array.isArray(
+                dados.pontos
+            ) ||
+            dados.pontos.length === 0
+        ) {
+
+            limparHistorico();
+
+            info.innerHTML =
+                "<strong>Nenhum ponto GPS encontrado para esta data.</strong>";
+
+            return;
+        }
+
+        desenharHistorico(
+            dados.pontos
+        );
+
+        const aparelho =
+            aparelhosMapa[aparelhoId];
+
+        const nome =
+            aparelho
+                ? aparelho.nome
+                : aparelhoId;
+
+        info.innerHTML =
+            "<strong>Aparelho:</strong> " +
+            nome +
+            "<br>" +
+
+            "<strong>Data:</strong> " +
+            data +
+            "<br>" +
+
+            "<strong>Pontos GPS:</strong> " +
+            dados.pontos.length;
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO HISTÓRICO:",
+            erro
+        );
+
+        info.textContent =
+            erro.message;
+    }
+}
+
+
+/* ======================================================
+   DESENHAR HISTÓRICO
+====================================================== */
+
+function desenharHistorico(
+    pontos
+) {
+
+    // Remove percurso histórico anterior
+    if (historicoLayer) {
+
+        mapa.removeLayer(
+            historicoLayer
+        );
+
+        historicoLayer =
+            null;
+    }
+
+    const coordenadas =
+        pontos
+            .map(
+                function(ponto) {
+
+                    return [
+                        Number(
+                            ponto.latitude
+                        ),
+
+                        Number(
+                            ponto.longitude
+                        )
+                    ];
+
+                }
+            )
+            .filter(
+                function(posicao) {
+
+                    return (
+                        Number.isFinite(
+                            posicao[0]
+                        ) &&
+                        Number.isFinite(
+                            posicao[1]
+                        )
+                    );
+
+                }
+            );
+
+    if (
+        coordenadas.length === 0
+    ) {
+
+        return;
+    }
+
+    /*
+     * IMPORTANTE:
+     *
+     * Cada coordenada representa uma
+     * posição GPS recebida do celular.
+     *
+     * A linha segue:
+     *
+     * GPS 1 → GPS 2 → GPS 3 → GPS 4...
+     */
+
+    historicoLayer =
+        L.layerGroup();
+
+    // Linha completa do percurso
+    const linha =
+        L.polyline(
+            coordenadas,
+            {
+                weight: 5
+            }
+        );
+
+    linha.addTo(
+        historicoLayer
+    );
+
+
+    // ==================================================
+    // MARCADOR DE INÍCIO
+    // ==================================================
+
+    const inicio =
+        L.marker(
+            coordenadas[0]
+        )
+        .bindPopup(
+            "<strong>INÍCIO DO PERCURSO</strong>"
+        );
+
+    inicio.addTo(
+        historicoLayer
+    );
+
+
+    // ==================================================
+    // MARCADOR DE FIM
+    // ==================================================
+
+    const fim =
+        L.marker(
+            coordenadas[
+                coordenadas.length - 1
+            ]
+        )
+        .bindPopup(
+            "<strong>FIM DO PERCURSO</strong>"
+        );
+
+    fim.addTo(
+        historicoLayer
+    );
+
+
+    historicoLayer.addTo(
+        mapa
+    );
+
+
+    // Enquadra todo o percurso
+    if (
+        coordenadas.length > 1
+    ) {
+
+        mapa.fitBounds(
+            linha.getBounds(),
+            {
+                padding: [
+                    50,
+                    50
+                ]
+            }
+        );
+
+    } else {
+
+        mapa.setView(
+            coordenadas[0],
+            17
+        );
+    }
+}
+
+
+/* ======================================================
+   LIMPAR HISTÓRICO
+====================================================== */
+
+function limparHistorico() {
+
+    if (historicoLayer) {
+
+        mapa.removeLayer(
+            historicoLayer
+        );
+
+        historicoLayer =
+            null;
+    }
+
+    const info =
+        document.getElementById(
+            "historicoInfo"
+        );
+
+    if (info) {
+
+        info.textContent = "";
+    }
 }
 
 
