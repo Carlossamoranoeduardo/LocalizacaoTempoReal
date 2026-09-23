@@ -45,74 +45,149 @@
             font-weight: bold;
         }
 
-        .entrega {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-        }
+        .rotaItem {
+    display: flex;
+    position: relative;
+    background: white;
+    margin-bottom: 0;
+    min-height: 180px;
+}
 
-        .numero {
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
+.linhaRota {
+    width: 70px;
+    position: relative;
+    flex-shrink: 0;
+}
 
-        .endereco {
-            font-size: 17px;
-            margin-bottom: 10px;
-            line-height: 1.4;
-        }
+.circuloNumero {
+    position: absolute;
+    top: 8px;
+    left: 20px;
+    width: 42px;
+    height: 42px;
+    border: 1px solid #9aa0a6;
+    border-radius: 50%;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    color: #333;
+    z-index: 2;
+}
 
-        .chegada {
-            font-size: 15px;
-            color: #555;
-            margin-bottom: 12px;
-        }
+.linhaVertical {
+    position: absolute;
+    top: 50px;
+    bottom: 0;
+    left: 40px;
+    width: 1px;
+    background: #bfc4c9;
+}
 
-        .botoes {
-            display: flex;
-            gap: 8px;
-        }
+.conteudoEntrega {
+    flex: 1;
+    padding: 8px 15px 25px 0;
+    border-bottom: 1px solid #ddd;
+}
 
-        button {
-            flex: 1;
-            border: 0;
-            border-radius: 8px;
-            padding: 13px 8px;
-            font-weight: bold;
-            font-size: 14px;
-        }
+.cabecalhoEntrega {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 15px;
+}
 
-        .navegar {
-            background: #1976d2;
-            color: white;
-        }
+.nomeCliente {
+    font-size: 21px;
+    color: #111;
+    font-weight: 400;
+    padding-top: 8px;
+}
 
-        .finalizar {
-            background: #2e7d32;
-            color: white;
-        }
+.previsao {
+    text-align: right;
+    color: #6b7785;
+    font-size: 14px;
+    line-height: 1.4;
+}
 
-        .erro {
-            background: #ffebee;
-            color: #b71c1c;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: bold;
-        }
+.previsao strong {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+}
 
-        .finalizada {
-            background: #e8f5e9;
-            color: #2e7d32;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 18px;
-        }
+.enderecoEntrega {
+    color: #718096;
+    font-size: 15px;
+    line-height: 1.45;
+    margin-top: 18px;
+    margin-bottom: 18px;
+}
+
+.botoesEntrega {
+    display: flex;
+    gap: 10px;
+}
+
+.botaoNavegar {
+    flex: 0 0 200px;
+    background: #1976d2;
+    color: white;
+    border: 0;
+    border-radius: 7px;
+    padding: 13px 18px;
+    font-size: 17px;
+    font-weight: bold;
+}
+
+.botaoFinalizar {
+    flex: 0 0 150px;
+    background: #2e7d32;
+    color: white;
+    border: 0;
+    border-radius: 7px;
+    padding: 13px 10px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+@media (max-width: 600px) {
+
+    .linhaRota {
+        width: 62px;
+    }
+
+    .circuloNumero {
+        left: 12px;
+    }
+
+    .linhaVertical {
+        left: 32px;
+    }
+
+    .conteudoEntrega {
+        padding-right: 10px;
+    }
+
+    .nomeCliente {
+        font-size: 20px;
+    }
+
+    .previsao {
+        font-size: 13px;
+    }
+
+    .botaoNavegar {
+        flex: 1;
+    }
+
+    .botaoFinalizar {
+        flex: 1;
+    }
+
+}
 
     </style>
 
@@ -495,69 +570,52 @@ async function finalizarEntrega(
 function mostrarRota() {
 
     const lista =
-        document.getElementById(
-            "listaEntregas"
-        );
+        document.getElementById("listaEntregas");
 
     const status =
-        document.getElementById(
-            "status"
-        );
-
+        document.getElementById("status");
 
     lista.innerHTML = "";
-
 
     const destinos =
         obterDestinos();
 
-
     const finalizados =
         obterFinalizados();
 
-
     const pendentes =
         destinos.filter(
-            (
-                entrega,
-                indice
-            ) => {
+            entrega => {
 
                 const id =
                     obterIdEntrega(
                         entrega,
-                        indice
+                        0
                     );
 
-                return !finalizados.includes(
-                    id
-                ) &&
-                !finalizados.includes(
-                    String(id)
+                return (
+                    entrega.finalizada !== true &&
+                    entrega.finalizada !== "true" &&
+                    !finalizados.includes(id) &&
+                    !finalizados.includes(String(id))
                 );
 
             }
         );
 
-
-    if (
-        pendentes.length === 0
-    ) {
+    if (pendentes.length === 0) {
 
         status.textContent =
             "✓ ROTA FINALIZADA";
 
-        lista.innerHTML =
-            `
+        lista.innerHTML = `
             <div class="finalizada">
                 ✓ TODAS AS ENTREGAS FORAM FINALIZADAS
             </div>
-            `;
+        `;
 
         return;
-
     }
-
 
     status.textContent =
         pendentes.length +
@@ -565,16 +623,18 @@ function mostrarRota() {
 
 
     pendentes.forEach(
-        (
-            entrega,
-            indice
-        ) => {
+        (entrega, indice) => {
 
             const id =
                 obterIdEntrega(
                     entrega,
                     indice
                 );
+
+            const numero =
+                entrega.numero ??
+                entrega.id ??
+                indice + 1;
 
             const latitude =
                 obterLatitude(
@@ -591,10 +651,51 @@ function mostrarRota() {
                     entrega
                 );
 
-            const chegada =
-                calcularChegada(
-                    indice
-                );
+            const nome =
+                entrega.nome ||
+                entrega.cliente ||
+                entrega.nomeCliente ||
+                "Entrega " + numero;
+
+            let chegada =
+                entrega.previsaoChegada ||
+                entrega.previsao_chegada ||
+                "";
+
+            if (chegada) {
+
+                try {
+
+                    const data =
+                        new Date(chegada);
+
+                    if (!isNaN(data.getTime())) {
+
+                        chegada =
+                            data.toLocaleTimeString(
+                                "pt-BR",
+                                {
+                                    hour: "2-digit",
+                                    minute: "2-digit"
+                                }
+                            );
+
+                    }
+
+                } catch (erro) {}
+
+            }
+
+            if (!chegada) {
+
+                chegada =
+                    calcularChegada(
+                        destinos.indexOf(
+                            entrega
+                        )
+                    );
+
+            }
 
 
             const div =
@@ -603,47 +704,78 @@ function mostrarRota() {
                 );
 
             div.className =
-                "entrega";
+                "rotaItem";
 
 
-            div.innerHTML =
-                `
-                <div class="numero">
-                    ENTREGA ${indice + 1}
-                </div>
+            div.innerHTML = `
 
-                <div class="endereco">
-                    ${escaparTexto(endereco)}
-                </div>
+                <div class="linhaRota">
 
-                <div class="chegada">
-                    🕐 Chegada estimada:
-                    <strong>${chegada}</strong>
-                </div>
+                    <div class="circuloNumero">
+                        ${numero}
+                    </div>
 
-                <div class="botoes">
-
-                    <button
-                        class="navegar"
-                        onclick="navegar(
-                            ${latitude},
-                            ${longitude}
-                        )"
-                    >
-                        NAVEGAR
-                    </button>
-
-                    <button
-                        class="finalizar"
-                        onclick="finalizarEntrega(
-                            '${String(id).replace(/'/g, "\\'")}'
-                        )"
-                    >
-                        FINALIZAR
-                    </button>
+                    <div class="linhaVertical"></div>
 
                 </div>
-                `;
+
+
+                <div class="conteudoEntrega">
+
+                    <div class="cabecalhoEntrega">
+
+                        <div class="nomeCliente">
+                            ${escaparTexto(nome)}
+                        </div>
+
+                        <div class="previsao">
+                            Previsão de<br>
+                            chegada
+                            <strong>
+                                ${escaparTexto(
+                                    chegada
+                                )}
+                            </strong>
+                        </div>
+
+                    </div>
+
+
+                    <div class="enderecoEntrega">
+                        ${escaparTexto(endereco)}
+                    </div>
+
+
+                    <div class="botoesEntrega">
+
+                        <button
+                            class="botaoNavegar"
+                            onclick="navegar(
+                                ${latitude},
+                                ${longitude}
+                            )"
+                        >
+                            ↪ &nbsp; Navegar
+                        </button>
+
+
+                        <button
+                            class="botaoFinalizar"
+                            onclick="finalizarEntrega(
+                                '${String(id).replace(
+                                    /'/g,
+                                    "\\'"
+                                )}'
+                            )"
+                        >
+                            FINALIZAR
+                        </button>
+
+                    </div>
+
+                </div>
+
+            `;
 
 
             lista.appendChild(
