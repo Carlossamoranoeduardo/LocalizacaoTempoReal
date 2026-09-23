@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Rota do Motorista</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 15px;
+            background: #f2f2f2;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        #status {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .entrega {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        }
+
+        .numero {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .endereco {
+            font-size: 17px;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .chegada {
+            font-size: 15px;
+            color: #555;
+            margin-bottom: 12px;
+        }
+
+        .botoes {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            flex: 1;
+            border: 0;
+            border-radius: 8px;
+            padding: 13px 8px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .navegar {
+            background: #1976d2;
+            color: white;
+        }
+
+        .finalizar {
+            background: #2e7d32;
+            color: white;
+        }
+
+        .erro {
+            background: #ffebee;
+            color: #b71c1c;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .finalizada {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>🚚 ROTA DE ENTREGAS</h1>
+
+    <div id="status">
+        CARREGANDO ROTA...
+    </div>
+
+    <div id="listaEntregas"></div>
+
+</div>
+
+
+<script>
+
+const parametros =
+    new URLSearchParams(
+        window.location.search
+    );
+
+const rotaId =
+    parametros.get("id");
+
+
+let dadosRota = null;
+
+
+// ======================================================
+// ESCAPAR TEXTO
+// ======================================================
+
+function escaparTexto(texto) {
+
+    if (
+        texto === null ||
+        texto === undefined
+    ) {
+        return "";
+    }
+
+    return String(texto)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+// ======================================================
+// PEGAR DESTINOS
+// ======================================================
+
+function obterDestinos() {
+
+    if (
+        dadosRota &&
+        Array.isArray(dadosRota.destinos)
+    ) {
+
+        return dadosRota.destinos;
+
+    }
+
+    if (
+        dadosRota &&
+        dadosRota.rota &&
+        Array.isArray(dadosRota.rota.destinos)
+    ) {
+
+        return dadosRota.rota.destinos;
+
+    }
+
+    if (
+        dadosRota &&
+        Array.isArray(dadosRota.entregas)
+    ) {
+
+        return dadosRota.entregas;
+
+    }
+
+    return [];
+
+}
+
+
+// ======================================================
+// PEGAR FINALIZADOS
+// ======================================================
+
+function obterFinalizados() {
+
+    if (
+        dadosRota &&
+        Array.isArray(dadosRota.finalizados)
+    ) {
+
+        return dadosRota.finalizados;
+
+    }
+
+    if (
+        dadosRota &&
+        Array.isArray(dadosRota.finalizadas)
+    ) {
+
+        return dadosRota.finalizadas;
+
+    }
+
+    return [];
+
+}
+
+
+// ======================================================
+// ID DA ENTREGA
+// ======================================================
+
+function obterIdEntrega(
+    entrega,
+    indice
+) {
+
+    if (
+        entrega.id !== undefined &&
+        entrega.id !== null
+    ) {
+
+        return entrega.id;
+
+    }
+
+    if (
+        entrega.entregaId !== undefined &&
+        entrega.entregaId !== null
+    ) {
+
+        return entrega.entregaId;
+
+    }
+
+    return indice + 1;
+
+}
+
+
+// ======================================================
+// ENDEREÇO
+// ======================================================
+
+function obterEndereco(entrega) {
+
+    return (
+        entrega.endereco ||
+        entrega.address ||
+        entrega.nome ||
+        "Endereço não informado"
+    );
+
+}
+
+
+// ======================================================
+// LATITUDE
+// ======================================================
+
+function obterLatitude(entrega) {
+
+    return Number(
+        entrega.latitude ??
+        entrega.lat ??
+        0
+    );
+
+}
+
+
+// ======================================================
+// LONGITUDE
+// ======================================================
+
+function obterLongitude(entrega) {
+
+    return Number(
+        entrega.longitude ??
+        entrega.lon ??
+        entrega.lng ??
+        0
+    );
+
+}
+
+
+// ======================================================
+// HORA DE CHEGADA
+// ======================================================
+
+function calcularChegada(
+    indice
+) {
+
+    const agora =
+        new Date();
+
+    let segundos = 0;
+
+    const etapas =
+        dadosRota &&
+        Array.isArray(
+            dadosRota.etapas
+        )
+            ? dadosRota.etapas
+            : [];
+
+    for (
+        let i = 0;
+        i <= indice &&
+        i < etapas.length;
+        i++
+    ) {
+
+        if (
+            etapas[i] &&
+            Number.isFinite(
+                Number(
+                    etapas[i].duration
+                )
+            )
+        ) {
+
+            segundos +=
+                Number(
+                    etapas[i].duration
+                );
+
+        }
+
+    }
+
+    const chegada =
+        new Date(
+            agora.getTime() +
+            segundos * 1000
+        );
+
+    return chegada.toLocaleTimeString(
+        "pt-BR",
+        {
+            hour: "2-digit",
+            minute: "2-digit"
+        }
+    );
+
+}
+
+
+// ======================================================
+// NAVEGAR
+// ======================================================
+
+function navegar(
+    latitude,
+    longitude
+) {
+
+    if (
+        !latitude ||
+        !longitude
+    ) {
+
+        alert(
+            "Coordenadas desta entrega não estão disponíveis."
+        );
+
+        return;
+
+    }
+
+    const url =
+        "https://www.google.com/maps/dir/?api=1" +
+        "&destination=" +
+        encodeURIComponent(
+            latitude + "," + longitude
+        ) +
+        "&travelmode=driving";
+
+    window.open(
+        url,
+        "_blank"
+    );
+
+}
+
+
+// ======================================================
+// FINALIZAR ENTREGA
+// ======================================================
+
+async function finalizarEntrega(
+    entregaId
+) {
+
+    if (
+        !confirm(
+            "Deseja finalizar esta entrega?"
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    try {
+
+        const resposta =
+            await fetch(
+                "/rota-compartilhada/" +
+                encodeURIComponent(
+                    rotaId
+                ) +
+                "/finalizar/" +
+                encodeURIComponent(
+                    entregaId
+                ),
+                {
+                    method: "POST"
+                }
+            );
+
+
+        const resultado =
+            await resposta.json();
+
+
+        if (
+            !resposta.ok
+        ) {
+
+            throw new Error(
+                resultado.erro ||
+                "Não foi possível finalizar a entrega."
+            );
+
+        }
+
+
+        await carregarRota();
+
+
+    } catch (erro) {
+
+        console.error(
+            erro
+        );
+
+        alert(
+            erro.message
+        );
+
+    }
+
+}
+
+
+// ======================================================
+// MOSTRAR ROTA
+// ======================================================
+
+function mostrarRota() {
+
+    const lista =
+        document.getElementById(
+            "listaEntregas"
+        );
+
+    const status =
+        document.getElementById(
+            "status"
+        );
+
+
+    lista.innerHTML = "";
+
+
+    const destinos =
+        obterDestinos();
+
+
+    const finalizados =
+        obterFinalizados();
+
+
+    const pendentes =
+        destinos.filter(
+            (
+                entrega,
+                indice
+            ) => {
+
+                const id =
+                    obterIdEntrega(
+                        entrega,
+                        indice
+                    );
+
+                return !finalizados.includes(
+                    id
+                ) &&
+                !finalizados.includes(
+                    String(id)
+                );
+
+            }
+        );
+
+
+    if (
+        pendentes.length === 0
+    ) {
+
+        status.textContent =
+            "✓ ROTA FINALIZADA";
+
+        lista.innerHTML =
+            `
+            <div class="finalizada">
+                ✓ TODAS AS ENTREGAS FORAM FINALIZADAS
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    status.textContent =
+        pendentes.length +
+        " ENTREGA(S) PENDENTE(S)";
+
+
+    pendentes.forEach(
+        (
+            entrega,
+            indice
+        ) => {
+
+            const id =
+                obterIdEntrega(
+                    entrega,
+                    indice
+                );
+
+            const latitude =
+                obterLatitude(
+                    entrega
+                );
+
+            const longitude =
+                obterLongitude(
+                    entrega
+                );
+
+            const endereco =
+                obterEndereco(
+                    entrega
+                );
+
+            const chegada =
+                calcularChegada(
+                    indice
+                );
+
+
+            const div =
+                document.createElement(
+                    "div"
+                );
+
+            div.className =
+                "entrega";
+
+
+            div.innerHTML =
+                `
+                <div class="numero">
+                    ENTREGA ${indice + 1}
+                </div>
+
+                <div class="endereco">
+                    ${escaparTexto(endereco)}
+                </div>
+
+                <div class="chegada">
+                    🕐 Chegada estimada:
+                    <strong>${chegada}</strong>
+                </div>
+
+                <div class="botoes">
+
+                    <button
+                        class="navegar"
+                        onclick="navegar(
+                            ${latitude},
+                            ${longitude}
+                        )"
+                    >
+                        NAVEGAR
+                    </button>
+
+                    <button
+                        class="finalizar"
+                        onclick="finalizarEntrega(
+                            '${String(id).replace(/'/g, "\\'")}'
+                        )"
+                    >
+                        FINALIZAR
+                    </button>
+
+                </div>
+                `;
+
+
+            lista.appendChild(
+                div
+            );
+
+        }
+    );
+
+}
+
+
+// ======================================================
+// CARREGAR ROTA
+// ======================================================
+
+async function carregarRota() {
+
+    if (!rotaId) {
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "LINK DE ROTA INVÁLIDO";
+
+        return;
+
+    }
+
+
+    try {
+
+        document.getElementById(
+            "status"
+        ).textContent =
+            "CARREGANDO ROTA...";
+
+
+        const resposta =
+            await fetch(
+                "/rota-compartilhada/" +
+                encodeURIComponent(
+                    rotaId
+                )
+            );
+
+
+        const resultado =
+            await resposta.json();
+
+
+        if (
+            !resposta.ok
+        ) {
+
+            throw new Error(
+                resultado.erro ||
+                "Não foi possível carregar a rota."
+            );
+
+        }
+
+
+        dadosRota =
+            resultado;
+
+
+        mostrarRota();
+
+
+    } catch (erro) {
+
+        console.error(
+            erro
+        );
+
+
+        document.getElementById(
+            "status"
+        ).innerHTML =
+            `
+            <div class="erro">
+                ${escaparTexto(
+                    erro.message
+                )}
+            </div>
+            `;
+
+    }
+
+}
+
+
+// ======================================================
+// INICIAR
+// ======================================================
+
+carregarRota();
+
+</script>
+
+</body>
+
+</html>
