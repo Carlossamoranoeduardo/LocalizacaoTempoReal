@@ -3,6 +3,7 @@ const http = require("http");
 const cors = require("cors");
 const path = require("path");
 const axios = require("axios");
+const crypto = require("crypto");
 const { Server } = require("socket.io");
 
 const app = express();
@@ -883,6 +884,498 @@ console.log(
 // ======================================================
 // ENVIAR ROTA PARA CELULAR
 // ======================================================
+
+// ======================================================
+// ROTAS COMPARTILHADAS PARA MOTORISTA
+// ======================================================
+
+const pastaRotasCompartilhadas =
+    path.join(__dirname, "rotas_compartilhadas");
+
+if (!require("fs").existsSync(pastaRotasCompartilhadas)) {
+
+    require("fs").mkdirSync(
+        pastaRotasCompartilhadas,
+        {
+            recursive: true
+        }
+    );
+
+}
+
+
+// ======================================================
+// CRIAR LINK DA ROTA
+// ======================================================
+
+app.post(
+    "/criar-rota-compartilhada",
+    (req, res) => {
+
+        try {
+
+            const rota =
+                req.body;
+
+
+            if (
+                !rota ||
+                !rota.origem ||
+                !Array.isArray(
+                    rota.destinos
+                )
+            ) {
+
+                return res.status(400).json({
+
+                    sucesso: false,
+
+                    erro:
+                        "Dados da rota inválidos."
+
+                });
+
+            }
+
+
+            const id =
+                crypto
+                    .randomBytes(8)
+                    .toString("hex");
+
+
+            const criadaEm =
+                Date.now();
+
+
+            let segundosAcumulados = 0;
+
+
+            const destinos =
+                rota.destinos.map(
+                    (destino, indice) => {
+
+                        const etapa =
+                            Array.isArray(
+                                rota.etapas
+                            )
+                                ? rota.etapas[indice]
+                                : null;
+
+
+                        if (etapa) {
+
+                            segundosAcumulados +=
+                                Number(
+                                    etapa.duration || 0
+                                );
+
+                        }
+
+
+                        return {
+
+                            id:
+                                destino.id ??
+                                indice + 1,
+
+                            numero:
+                                indice + 1,
+
+                            endereco:
+                                destino.endereco || "",
+
+                            latitude:
+                                Number(
+                                    destino.latitude
+                                ),
+
+                            longitude:
+                                Number(
+                                    destino.longitude
+                                ),
+
+                            finalizada:
+                                false,
+
+                            finalizadaEm:
+                                null,
+
+                            previsaoChegada:
+                                criadaEm +
+                                (
+                                    segundosAcumulados *
+                                    1000
+                                )
+
+                        };
+
+                    }
+                );
+
+
+            const rotaCompartilhada = {
+
+                id:
+                    id,
+
+                criadaEm:
+                    criadaEm,
+
+                origem: {
+
+                    latitude:
+                        Number(
+                            rota.origem.latitude
+                        ),
+
+                    longitude:
+                        Number(
+                            rota.origem.longitude
+                        )
+
+                },
+
+                destinos:
+                    destinos,
+
+                quantidade:
+                    destinos.length,
+
+                distanciaKm:
+                    Number(
+                        rota.distanciaKm || 0
+                    ),
+
+                duracaoSegundos:
+                    Number(
+                        rota.duracaoSegundos || 0
+                    )
+
+            };
+
+
+            const arquivo =
+                path.join(
+                    pastaRotasCompartilhadas,
+                    `${id}.json`
+                );
+
+
+            require("fs").writeFileSync(
+
+                arquivo,
+
+                JSON.stringify(
+                    rotaCompartilhada,
+                    null,
+                    2
+                ),
+
+                "utf8"
+
+            );
+
+
+            res.json({
+
+                sucesso:
+                    true,
+
+                id:
+                    id,
+
+                url:
+                    `/rota.html?id=${id}`
+
+            });
+
+
+        } catch (erro) {
+
+            console.error(
+                "ERRO AO CRIAR ROTA COMPARTILHADA:",
+                erro.message
+            );
+
+
+            res.status(500).json({
+
+                sucesso:
+                    false,
+
+                erro:
+                    erro.message
+
+            });
+
+        }
+
+    }
+);
+
+
+// ======================================================
+// CONSULTAR ROTA COMPARTILHADA
+// ======================================================
+
+app.get(
+    "/rota-compartilhada/:id",
+    (req, res) => {
+
+        try {
+
+            const id =
+                String(
+                    req.params.id
+                )
+                .replace(
+                    /[^a-zA-Z0-9_-]/g,
+                    ""
+                );
+
+
+            if (!id) {
+
+                return res.status(400).json({
+
+                    sucesso:
+                        false,
+
+                    erro:
+                        "ID da rota inválido."
+
+                });
+
+            }
+
+
+            const arquivo =
+                path.join(
+                    pastaRotasCompartilhadas,
+                    `${id}.json`
+                );
+
+
+            if (
+                !require("fs").existsSync(
+                    arquivo
+                )
+            ) {
+
+                return res.status(404).json({
+
+                    sucesso:
+                        false,
+
+                    erro:
+                        "Rota não encontrada."
+
+                });
+
+            }
+
+
+            const rota =
+                JSON.parse(
+                    require("fs").readFileSync(
+                        arquivo,
+                        "utf8"
+                    )
+                );
+
+
+            res.json({
+
+                sucesso:
+                    true,
+
+                rota:
+                    rota
+
+            });
+
+
+        } catch (erro) {
+
+            console.error(
+                "ERRO AO CONSULTAR ROTA:",
+                erro.message
+            );
+
+
+            res.status(500).json({
+
+                sucesso:
+                    false,
+
+                erro:
+                    erro.message
+
+            });
+
+        }
+
+    }
+);
+
+
+// ======================================================
+// FINALIZAR ENTREGA
+// ======================================================
+
+app.post(
+    "/rota-compartilhada/:id/finalizar/:entregaId",
+    (req, res) => {
+
+        try {
+
+            const id =
+                String(
+                    req.params.id
+                )
+                .replace(
+                    /[^a-zA-Z0-9_-]/g,
+                    ""
+                );
+
+
+            const entregaId =
+                String(
+                    req.params.entregaId
+                );
+
+
+            const arquivo =
+                path.join(
+                    pastaRotasCompartilhadas,
+                    `${id}.json`
+                );
+
+
+            if (
+                !require("fs").existsSync(
+                    arquivo
+                )
+            ) {
+
+                return res.status(404).json({
+
+                    sucesso:
+                        false,
+
+                    erro:
+                        "Rota não encontrada."
+
+                });
+
+            }
+
+
+            const rota =
+                JSON.parse(
+                    require("fs").readFileSync(
+                        arquivo,
+                        "utf8"
+                    )
+                );
+
+
+            const entrega =
+                rota.destinos.find(
+                    destino =>
+                        String(
+                            destino.id
+                        ) ===
+                        entregaId
+                );
+
+
+            if (!entrega) {
+
+                return res.status(404).json({
+
+                    sucesso:
+                        false,
+
+                    erro:
+                        "Entrega não encontrada."
+
+                });
+
+            }
+
+
+            entrega.finalizada =
+                true;
+
+
+            entrega.finalizadaEm =
+                Date.now();
+
+
+            require("fs").writeFileSync(
+
+                arquivo,
+
+                JSON.stringify(
+                    rota,
+                    null,
+                    2
+                ),
+
+                "utf8"
+
+            );
+
+
+            const pendentes =
+                rota.destinos.filter(
+                    destino =>
+                        !destino.finalizada
+                ).length;
+
+
+            res.json({
+
+                sucesso:
+                    true,
+
+                entregaId:
+                    entrega.id,
+
+                pendentes:
+                    pendentes,
+
+                finalizadas:
+                    rota.destinos.length -
+                    pendentes
+
+            });
+
+
+        } catch (erro) {
+
+            console.error(
+                "ERRO AO FINALIZAR ENTREGA:",
+                erro.message
+            );
+
+
+            res.status(500).json({
+
+                sucesso:
+                    false,
+
+                erro:
+                    erro.message
+
+            });
+
+        }
+
+    }
+);
 
 app.post(
     "/enviar-rota",

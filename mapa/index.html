@@ -395,6 +395,53 @@ Rua Z, 200, Santos - SP"
 
     </div>
 
+<div
+    id="painelLinkMotorista"
+    style="
+        display:none;
+        margin-top:15px;
+        padding:15px;
+        border:1px solid #1976d2;
+        border-radius:10px;
+        background:#f5f9ff;
+    "
+>
+
+    <strong>
+        LINK DA ROTA PARA O MOTORISTA
+    </strong>
+
+    <input
+        id="campoLinkMotorista"
+        type="text"
+        readonly
+        style="
+            width:100%;
+            box-sizing:border-box;
+            padding:10px;
+            margin-top:10px;
+        "
+    >
+
+    <button
+        id="botaoCopiarLinkMotorista"
+        onclick="copiarLinkMotorista()"
+        style="
+            width:100%;
+            margin-top:8px;
+            padding:12px;
+            background:#1976d2;
+            color:white;
+            border:0;
+            border-radius:8px;
+            font-weight:bold;
+        "
+    >
+        COPIAR LINK DA ROTA
+    </button>
+
+</div>
+
 
     <div id="status">
         Aguardando localização...
@@ -1619,6 +1666,7 @@ async function calcularRota() {
         ------------------------------------------------ */
 
         gerarLinksGoogleMaps();
+        criarLinkRotaMotorista();
 
 
         /* ------------------------------------------------
@@ -2229,6 +2277,106 @@ function gerarLinksGoogleMaps() {
 /* ======================================================
    ENVIAR ROTA PARA CELULARES
 ====================================================== */
+
+// ======================================================
+// LINK DA ROTA PARA O MOTORISTA
+// ======================================================
+
+async function criarLinkRotaMotorista() {
+
+    if (!rotaAtual) {
+        alert("Calcule uma rota primeiro.");
+        return;
+    }
+
+    try {
+
+        const resposta =
+            await fetch(
+                "/criar-rota-compartilhada",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body:
+                        JSON.stringify(
+                            rotaAtual
+                        )
+                }
+            );
+
+        const dados =
+            await resposta.json();
+
+        if (
+            !resposta.ok ||
+            !dados.sucesso
+        ) {
+            throw new Error(
+                dados.erro ||
+                "Erro ao criar link."
+            );
+        }
+
+        const link =
+            window.location.origin +
+            dados.url;
+
+        document.getElementById(
+            "campoLinkMotorista"
+        ).value =
+            link;
+
+        document.getElementById(
+            "painelLinkMotorista"
+        ).style.display =
+            "block";
+
+    } catch (erro) {
+
+        console.error(erro);
+        alert(erro.message);
+
+    }
+}
+
+
+// ======================================================
+// COPIAR LINK
+// ======================================================
+
+async function copiarLinkMotorista() {
+
+    const campo =
+        document.getElementById(
+            "campoLinkMotorista"
+        );
+
+    if (!campo.value) {
+        alert("Nenhum link foi criado.");
+        return;
+    }
+
+    try {
+
+        await navigator.clipboard.writeText(
+            campo.value
+        );
+
+    } catch {
+
+        campo.select();
+        document.execCommand("copy");
+
+    }
+
+    document.getElementById(
+        "botaoCopiarLinkMotorista"
+    ).textContent =
+        "LINK COPIADO ✓";
+}
 
 async function enviarRotaParaCelular() {
 

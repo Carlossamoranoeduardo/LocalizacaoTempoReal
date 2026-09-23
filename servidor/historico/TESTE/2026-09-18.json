@@ -1,0 +1,32 @@
+[
+  {
+    "latitude": -20.811,
+    "longitude": -49.376,
+    "precisao": 5,
+    "horario": 1789727303106
+  },
+  {
+    "latitude": -20.812,
+    "longitude": -49.377,
+    "precisao": 5,
+    "horario": 1789727313106
+  },
+  {
+    "latitude": -20.813,
+    "longitude": -49.378,
+    "precisao": 5,
+    "horario": 1789727323106
+  },
+  {
+    "latitude": -20.814,
+    "longitude": -49.379,
+    "precisao": 5,
+    "horario": 1789727333106
+  },
+  {
+    "latitude": -20.815,
+    "longitude": -49.38,
+    "precisao": 5,
+    "horario": 1789727343106
+  }
+]
