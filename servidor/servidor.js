@@ -33,7 +33,9 @@ const LIMITE_APARELHOS = 100;
 // HISTÓRICO DE PERCURSOS
 // ======================================================
 
-const pastaHistorico = path.join(__dirname, "historico");
+const pastaHistorico =
+    process.env.PASTA_HISTORICO ||
+    path.join(__dirname, "historico");
 
 if (!require("fs").existsSync(pastaHistorico)) {
     require("fs").mkdirSync(pastaHistorico, {
@@ -712,13 +714,43 @@ app.post("/rota", async (req, res) => {
         );
 
 
-        const trip =
-            await axios.get(
-                tripURL,
-                {
-                    timeout: 120000
-                }
-            );
+        let trip;
+
+try {
+    trip = await axios.get(
+        tripURL,
+        {
+            timeout: 120000
+        }
+    );
+} catch (erroOSRM) {
+    console.error("====================================");
+    console.error("ERRO DETALHADO DO OSRM");
+    console.error("URL:", tripURL);
+    console.error("STATUS:", erroOSRM.response?.status);
+    console.error(
+        "RESPOSTA:",
+        JSON.stringify(
+            erroOSRM.response?.data,
+            null,
+            2
+        )
+    );
+    console.error("====================================");
+
+    throw new Error(
+        "OSRM: " +
+        (
+            erroOSRM.response?.data?.code ||
+            "ERRO"
+        ) +
+        " - " +
+        (
+            erroOSRM.response?.data?.message ||
+            erroOSRM.message
+        )
+    );
+}
 
 
         if (
