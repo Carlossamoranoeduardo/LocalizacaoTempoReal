@@ -548,25 +548,29 @@ app.post("/rota", async (req, res) => {
 
     try {
 
-        const enderecos =
-            req.body.enderecos;
+       const enderecos =
+    req.body.enderecos;
 
-        const latitudeAtual =
-            Number(req.body.latitude);
+const latitudeAtual =
+    Number(req.body.latitude);
 
-        const longitudeAtual =
-            Number(req.body.longitude);
+const longitudeAtual =
+    Number(req.body.longitude);
 
+console.log(
+    "GPS RECEBIDO NA ROTA:",
+    latitudeAtual,
+    longitudeAtual
+);
 
-        if (!Array.isArray(enderecos)) {
+if (!Array.isArray(enderecos)) {
 
-            return res.status(400).json({
-                erro:
-                    "Envie uma lista de endereços."
-            });
+    return res.status(400).json({
+        erro:
+            "Envie uma lista de endereços."
+    });
 
-        }
-
+}
 
         const lista =
             enderecos
