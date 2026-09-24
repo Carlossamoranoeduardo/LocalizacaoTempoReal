@@ -1,10 +1,18 @@
+require("dotenv").config();
+
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const path = require("path");
 const axios = require("axios");
-const crypto = require("crypto");
 const { Server } = require("socket.io");
+const { Pool } = require("pg");
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -43,79 +51,42 @@ if (!require("fs").existsSync(pastaHistorico)) {
     });
 }
 
-function salvarPontoHistorico(dados) {
+async function salvarPontoHistorico(dados) {
 
     try {
 
-        const aparelhoId =
-            String(dados.aparelhoId || "desconhecido");
-
-        const data = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/Sao_Paulo"
-});
-
-        const pastaAparelho =
-            path.join(
-                pastaHistorico,
-                aparelhoId
-            );
-
-        if (!require("fs").existsSync(pastaAparelho)) {
-            require("fs").mkdirSync(
-                pastaAparelho,
-                { recursive: true }
-            );
-        }
-
-        const arquivo =
-            path.join(
-                pastaAparelho,
-                `${data}.json`
-            );
-
-        let pontos = [];
-
-        if (require("fs").existsSync(arquivo)) {
-
-            try {
-                pontos =
-                    JSON.parse(
-                        require("fs").readFileSync(
-                            arquivo,
-                            "utf8"
-                        )
-                    );
-
-                if (!Array.isArray(pontos)) {
-                    pontos = [];
-                }
-
-            } catch {
-                pontos = [];
-            }
-        }
-
-        pontos.push({
-            latitude: Number(dados.latitude),
-            longitude: Number(dados.longitude),
-            precisao: Number(dados.precisao),
-            horario: Number(dados.horario || Date.now())
-        });
-
-        require("fs").writeFileSync(
-            arquivo,
-            JSON.stringify(
-                pontos,
-                null,
-                2
-            ),
-            "utf8"
+        await pool.query(
+            `
+            INSERT INTO gps_historico
+            (
+                aparelho_id,
+                latitude,
+                longitude,
+                precisao,
+                horario
+            )
+            VALUES
+            (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5
+            )
+            `,
+            [
+                String(dados.aparelhoId || "desconhecido"),
+                Number(dados.latitude),
+                Number(dados.longitude),
+                Number(dados.precisao),
+                new Date(dados.horario || Date.now())
+            ]
         );
 
     } catch (erro) {
 
         console.error(
-            "ERRO AO SALVAR HISTÓRICO:",
+            "ERRO AO SALVAR HISTÓRICO NO NEON:",
             erro.message
         );
 
@@ -203,7 +174,7 @@ app.get("/status", (req, res) => {
 
 app.get(
     "/historico/:aparelhoId/:data",
-    (req, res) => {
+    async (req, res) => {
 
         try {
 
@@ -213,7 +184,6 @@ app.get(
             const data =
                 String(req.params.data);
 
-            // Aceita somente datas no formato YYYY-MM-DD
             if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
 
                 return res.status(400).json({
@@ -223,47 +193,32 @@ app.get(
 
             }
 
-            const arquivo =
-                path.join(
-                    pastaHistorico,
-                    aparelhoId,
-                    `${data}.json`
+            const resultado =
+                await pool.query(
+                    `
+                    SELECT
+                        latitude,
+                        longitude,
+                        precisao,
+                        EXTRACT(EPOCH FROM horario) * 1000 AS horario
+                    FROM gps_historico
+                    WHERE aparelho_id = $1
+                      AND (horario AT TIME ZONE 'America/Sao_Paulo')::date = $2::date
+                    ORDER BY horario ASC
+                    `,
+                    [
+                        aparelhoId,
+                        data
+                    ]
                 );
 
-            if (!require("fs").existsSync(arquivo)) {
-
-                return res.json({
-                    sucesso: true,
-                    aparelhoId: aparelhoId,
-                    data: data,
-                    quantidade: 0,
-                    pontos: []
-                });
-
-            }
-
-            const conteudo =
-                require("fs").readFileSync(
-                    arquivo,
-                    "utf8"
-                );
-
-            let pontos = [];
-
-            try {
-                pontos = JSON.parse(conteudo);
-            } catch {
-
-                return res.status(500).json({
-                    sucesso: false,
-                    erro: "Arquivo de histórico inválido."
-                });
-
-            }
-
-            if (!Array.isArray(pontos)) {
-                pontos = [];
-            }
+            const pontos =
+                resultado.rows.map(ponto => ({
+                    latitude: Number(ponto.latitude),
+                    longitude: Number(ponto.longitude),
+                    precisao: Number(ponto.precisao),
+                    horario: Number(ponto.horario)
+                }));
 
             res.json({
                 sucesso: true,
@@ -276,7 +231,7 @@ app.get(
         } catch (erro) {
 
             console.error(
-                "ERRO AO CONSULTAR HISTÓRICO:",
+                "ERRO AO CONSULTAR HISTÓRICO NO NEON:",
                 erro.message
             );
 
@@ -284,10 +239,11 @@ app.get(
                 sucesso: false,
                 erro: erro.message
             });
+
         }
+
     }
 );
-
 
 // ======================================================
 // GEOCODIFICAR
