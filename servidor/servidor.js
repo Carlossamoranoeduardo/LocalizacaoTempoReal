@@ -7,6 +7,7 @@ const path = require("path");
 const axios = require("axios");
 const { Server } = require("socket.io");
 const { Pool } = require("pg");
+const crypto = require("node:crypto");
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
