@@ -531,6 +531,36 @@ async function finalizarEntrega(
     }
 
 
+    /*
+     * Libera o áudio no clique do botão
+     * FINALIZAR, antes do fetch.
+     */
+    if (perfil === "alex") {
+
+        audioCleber.muted = true;
+
+        try {
+
+            await audioCleber.play();
+
+            audioCleber.pause();
+
+            audioCleber.currentTime = 0;
+
+        } catch (erro) {
+
+            console.error(
+                "Erro ao preparar áudio:",
+                erro
+            );
+
+        }
+
+        audioCleber.muted = false;
+
+    }
+
+
     try {
 
         const resposta =
@@ -566,15 +596,26 @@ async function finalizarEntrega(
 
 
         /*
-         * Se for ALEX e esta foi a última entrega,
-         * toca o áudio CLEBER.
+         * ÚLTIMA ENTREGA DO ALEX
          */
         if (
             perfil === "alex" &&
             Number(resultado.pendentes) === 0
         ) {
 
-            tocarAudioCleber();
+            audioCleber.currentTime = 0;
+
+            audioCleber.muted = false;
+
+            audioCleber.play()
+                .catch(erro => {
+
+                    console.error(
+                        "ERRO AO TOCAR ÁUDIO CLEBER:",
+                        erro
+                    );
+
+                });
 
         }
 
@@ -593,34 +634,6 @@ async function finalizarEntrega(
         );
 
     }
-
-}
-// Libera o áudio dentro do clique do usuário.
-// Isso evita bloqueio de autoplay do navegador.
-if (perfil === "alex") {
-
-    audioCleber.muted = true;
-
-    audioCleber.play()
-        .then(() => {
-
-            audioCleber.pause();
-
-            audioCleber.currentTime = 0;
-
-            audioCleber.muted = false;
-
-        })
-        .catch(erro => {
-
-            console.error(
-                "Não foi possível liberar o áudio:",
-                erro
-            );
-
-            audioCleber.muted = false;
-
-        });
 
 }
 
