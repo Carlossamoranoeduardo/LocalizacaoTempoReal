@@ -521,91 +521,94 @@ async function finalizarEntrega(
     entregaId
 ) {
 
-    if (
-        !confirm(
-            "Deseja finalizar esta entrega?"
-        )
-    ) {
-        return;
-    }
-
     /*
      * ==================================================
-     * ALEX — DETECTA SE ESTA É A ÚLTIMA ENTREGA
+     * DESCOBRIR SE É A ÚLTIMA ENTREGA
      * ==================================================
      */
 
-    let ultimaEntrega = false;
+    const destinos =
+        obterDestinos();
 
-    if (perfil === "alex") {
+    const finalizados =
+        obterFinalizados();
 
-        const destinos =
-            obterDestinos();
+    const pendentes =
+        destinos.filter(
+            (entrega, indice) => {
 
-        const finalizados =
-            obterFinalizados();
-
-        const pendentes =
-            destinos.filter(
-                entrega => {
-
-                    const id =
-                        obterIdEntrega(
-                            entrega,
-                            0
-                        );
-
-                    return (
-                        entrega.finalizada !== true &&
-                        entrega.finalizada !== "true" &&
-                        !finalizados.includes(id) &&
-                        !finalizados.includes(String(id))
+                const id =
+                    obterIdEntrega(
+                        entrega,
+                        indice
                     );
 
-                }
-            );
+                return (
+                    entrega.finalizada !== true &&
+                    entrega.finalizada !== "true" &&
+                    !finalizados.includes(id) &&
+                    !finalizados.includes(String(id))
+                );
 
-        ultimaEntrega =
-            pendentes.length === 1;
+            }
+        );
 
-    }
+    const ultimaEntrega =
+        pendentes.length === 1;
 
 
     /*
      * ==================================================
-     * IMPORTANTE:
-     * O ÁUDIO COMEÇA AQUI, NO CLIQUE DO BOTÃO.
+     * ALEX
      *
-     * NÃO ESPERAMOS O FETCH.
+     * LIBERA O ÁUDIO NO PRIMEIRO CLIQUE,
+     * ANTES DO CONFIRM.
      * ==================================================
      */
+
+    let audioLiberado =
+        false;
 
     if (
         perfil === "alex" &&
         ultimaEntrega
     ) {
 
-        audioCleber.pause();
+        console.log(
+            "ALEX: última entrega detectada."
+        );
 
-        audioCleber.currentTime = 0;
+        try {
 
-        audioCleber.muted = false;
+            audioCleber.pause();
 
-        const tocar =
-            audioCleber.play();
+            audioCleber.currentTime = 0;
 
-        if (tocar) {
+            /*
+             * O navegador permite este play porque
+             * ele acontece diretamente no clique.
+             *
+             * Mudo somente para liberar o áudio.
+             */
 
-            tocar.catch(
-                erro => {
+            audioCleber.muted = true;
 
-                    console.error(
-                        "ERRO AO TOCAR ÁUDIO CLEBER:",
-                        erro
-                    );
+            await audioCleber.play();
 
-                }
+            audioLiberado = true;
+
+            console.log(
+                "ALEX: áudio liberado."
             );
+
+        } catch (erro) {
+
+            console.error(
+                "ALEX: não conseguiu liberar áudio:",
+                erro
+            );
+
+            audioLiberado = false;
 
         }
 
@@ -614,7 +617,36 @@ async function finalizarEntrega(
 
     /*
      * ==================================================
-     * FINALIZA A ENTREGA NO SERVIDOR
+     * CONFIRMAÇÃO
+     * ==================================================
+     */
+
+    if (
+        !confirm(
+            "Deseja finalizar esta entrega?"
+        )
+    ) {
+
+        if (
+            audioLiberado
+        ) {
+
+            audioCleber.pause();
+
+            audioCleber.currentTime = 0;
+
+            audioCleber.muted = false;
+
+        }
+
+        return;
+
+    }
+
+
+    /*
+     * ==================================================
+     * FINALIZAR NO SERVIDOR
      * ==================================================
      */
 
@@ -644,27 +676,65 @@ async function finalizarEntrega(
             !resposta.ok
         ) {
 
-            /*
-             * Se o servidor rejeitar a entrega,
-             * para o áudio que eventualmente começou.
-             */
-
             if (
-                perfil === "alex" &&
-                ultimaEntrega
+                audioLiberado
             ) {
 
                 audioCleber.pause();
 
                 audioCleber.currentTime = 0;
 
-            }
+                audioCleber.muted = false;
 
+            }
 
             throw new Error(
                 resultado.erro ||
                 "Não foi possível finalizar a entrega."
             );
+
+        }
+
+
+        /*
+         * ==================================================
+         * ÚLTIMA ENTREGA DO ALEX
+         *
+         * AGORA O SERVIDOR JÁ CONFIRMOU.
+         * ==================================================
+         */
+
+        if (
+            perfil === "alex" &&
+            ultimaEntrega
+        ) {
+
+            console.log(
+                "ALEX: última entrega finalizada."
+            );
+
+            audioCleber.pause();
+
+            audioCleber.currentTime = 0;
+
+            audioCleber.muted = false;
+
+            try {
+
+                await audioCleber.play();
+
+                console.log(
+                    "ALEX: ÁUDIO CLEBER TOCANDO."
+                );
+
+            } catch (erro) {
+
+                console.error(
+                    "ALEX: ERRO FINAL AO TOCAR CLEBER:",
+                    erro
+                );
+
+            }
 
         }
 
