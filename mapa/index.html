@@ -406,6 +406,35 @@ Rua Z, 200, Santos - SP"
         background:#f5f9ff;
     "
 >
+<div id="painelLinkAlex"
+     style="display:none;
+            margin-top:10px;
+            padding:12px;
+            border:2px solid #2196f3;
+            border-radius:8px;
+            background:#e3f2fd;">
+
+    <strong>LINK ALEX</strong>
+
+    <input
+        id="campoLinkAlex"
+        type="text"
+        readonly
+        style="width:100%;
+               box-sizing:border-box;
+               margin-top:6px;
+               padding:8px;"
+    >
+
+    <button
+        id="botaoCopiarLinkAlex"
+        onclick="copiarLinkAlex()"
+        style="margin-top:6px;"
+    >
+        COPIAR LINK ALEX
+    </button>
+
+</div>
 
     <strong>
         LINK DA ROTA PARA O MOTORISTA
@@ -439,6 +468,22 @@ Rua Z, 200, Santos - SP"
     >
         COPIAR LINK DA ROTA
     </button>
+<button
+    id="botaoCriarLinkAlex"
+    onclick="criarLinkAlex()"
+    style="
+        width:100%;
+        margin-top:8px;
+        padding:12px;
+        background:#2196f3;
+        color:white;
+        border:0;
+        border-radius:8px;
+        font-weight:bold;
+    "
+>
+    CRIAR LINK DO ALEX
+</button>
 
 </div>
 
@@ -974,49 +1019,33 @@ function atualizarAparelhoNoMapa(
        APARELHO PRINCIPAL
     -------------------------------------------------- */
 
-    if (
-        !aparelhoPrincipalId
-    ) {
-
-        aparelhoPrincipalId =
-            id;
-    }
-
-
-    /*
-     * O aparelho principal continua sendo
-     * usado como origem da rota.
+        /*
+     * QUALQUER LOCALIZAÇÃO GPS RECEBIDA
+     * PODE SER USADA COMO ORIGEM DA ROTA.
+     *
+     * O último GPS recebido do celular
+     * passa a ser latitudeAtual/longitudeAtual.
      */
 
-    if (
-        id === aparelhoPrincipalId
-    ) {
+    latitudeAtual = lat;
 
-        latitudeAtual =
-            lat;
+    longitudeAtual = lon;
 
-        longitudeAtual =
-            lon;
+    document.getElementById(
+        "gps"
+    ).textContent =
 
+        lat.toFixed(6) +
+        ", " +
+        lon.toFixed(6);
 
-        document.getElementById(
-            "gps"
-        ).textContent =
+    document.getElementById(
+        "status"
+    ).textContent =
 
-            lat.toFixed(6) +
-            ", " +
-            lon.toFixed(6);
-
-
-        document.getElementById(
-            "status"
-        ).textContent =
-
-            online
-                ? "GPS conectado"
-                : "GPS offline — última posição";
-
-    }
+        online
+            ? "GPS conectado"
+            : "GPS offline — última posição";
 
 
     renderizarListaAparelhos();
@@ -2341,7 +2370,92 @@ async function criarLinkRotaMotorista() {
 
     }
 }
+// ======================================================
+// LINK ALEX
+// ======================================================
 
+async function criarLinkAlex() {
+
+    const campoMotorista =
+        document.getElementById(
+            "campoLinkMotorista"
+        );
+
+    if (!campoMotorista.value) {
+
+        alert(
+            "Crie primeiro o LINK DA ROTA PARA O MOTORISTA."
+        );
+
+        return;
+    }
+
+    const linkMotorista =
+        campoMotorista.value;
+
+    const separador =
+        linkMotorista.includes("?")
+            ? "&"
+            : "?";
+
+    const linkAlex =
+        linkMotorista +
+        separador +
+        "perfil=alex";
+
+    document.getElementById(
+        "campoLinkAlex"
+    ).value =
+        linkAlex;
+
+    document.getElementById(
+        "painelLinkAlex"
+    ).style.display =
+        "block";
+}
+
+// ======================================================
+// COPIAR LINK ALEX
+// ======================================================
+
+async function copiarLinkAlex() {
+
+    const campo =
+        document.getElementById(
+            "campoLinkAlex"
+        );
+
+    if (!campo.value) {
+
+        alert(
+            "Nenhum link Alex foi criado."
+        );
+
+        return;
+    }
+
+    try {
+
+        await navigator.clipboard.writeText(
+            campo.value
+        );
+
+    } catch {
+
+        campo.select();
+
+        document.execCommand(
+            "copy"
+        );
+
+    }
+
+    document.getElementById(
+        "botaoCopiarLinkAlex"
+    ).textContent =
+        "LINK ALEX COPIADO ✓";
+
+}
 
 // ======================================================
 // COPIAR LINK
