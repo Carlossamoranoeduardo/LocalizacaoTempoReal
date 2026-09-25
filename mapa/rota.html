@@ -526,40 +526,97 @@ async function finalizarEntrega(
             "Deseja finalizar esta entrega?"
         )
     ) {
-
         return;
+    }
+
+    /*
+     * ==================================================
+     * ALEX — DETECTA SE ESTA É A ÚLTIMA ENTREGA
+     * ==================================================
+     */
+
+    let ultimaEntrega = false;
+
+    if (perfil === "alex") {
+
+        const destinos =
+            obterDestinos();
+
+        const finalizados =
+            obterFinalizados();
+
+        const pendentes =
+            destinos.filter(
+                entrega => {
+
+                    const id =
+                        obterIdEntrega(
+                            entrega,
+                            0
+                        );
+
+                    return (
+                        entrega.finalizada !== true &&
+                        entrega.finalizada !== "true" &&
+                        !finalizados.includes(id) &&
+                        !finalizados.includes(String(id))
+                    );
+
+                }
+            );
+
+        ultimaEntrega =
+            pendentes.length === 1;
+
     }
 
 
     /*
-     * Libera o áudio no clique do botão
-     * FINALIZAR, antes do fetch.
+     * ==================================================
+     * IMPORTANTE:
+     * O ÁUDIO COMEÇA AQUI, NO CLIQUE DO BOTÃO.
+     *
+     * NÃO ESPERAMOS O FETCH.
+     * ==================================================
      */
-    if (perfil === "alex") {
 
-        audioCleber.muted = true;
+    if (
+        perfil === "alex" &&
+        ultimaEntrega
+    ) {
 
-        try {
+        audioCleber.pause();
 
-            await audioCleber.play();
+        audioCleber.currentTime = 0;
 
-            audioCleber.pause();
+        audioCleber.muted = false;
 
-            audioCleber.currentTime = 0;
+        const tocar =
+            audioCleber.play();
 
-        } catch (erro) {
+        if (tocar) {
 
-            console.error(
-                "Erro ao preparar áudio:",
-                erro
+            tocar.catch(
+                erro => {
+
+                    console.error(
+                        "ERRO AO TOCAR ÁUDIO CLEBER:",
+                        erro
+                    );
+
+                }
             );
 
         }
 
-        audioCleber.muted = false;
-
     }
 
+
+    /*
+     * ==================================================
+     * FINALIZA A ENTREGA NO SERVIDOR
+     * ==================================================
+     */
 
     try {
 
@@ -587,6 +644,23 @@ async function finalizarEntrega(
             !resposta.ok
         ) {
 
+            /*
+             * Se o servidor rejeitar a entrega,
+             * para o áudio que eventualmente começou.
+             */
+
+            if (
+                perfil === "alex" &&
+                ultimaEntrega
+            ) {
+
+                audioCleber.pause();
+
+                audioCleber.currentTime = 0;
+
+            }
+
+
             throw new Error(
                 resultado.erro ||
                 "Não foi possível finalizar a entrega."
@@ -596,29 +670,10 @@ async function finalizarEntrega(
 
 
         /*
-         * ÚLTIMA ENTREGA DO ALEX
+         * ==================================================
+         * ATUALIZA A TELA
+         * ==================================================
          */
-        if (
-            perfil === "alex" &&
-            Number(resultado.pendentes) === 0
-        ) {
-
-            audioCleber.currentTime = 0;
-
-            audioCleber.muted = false;
-
-            audioCleber.play()
-                .catch(erro => {
-
-                    console.error(
-                        "ERRO AO TOCAR ÁUDIO CLEBER:",
-                        erro
-                    );
-
-                });
-
-        }
-
 
         await carregarRota();
 
