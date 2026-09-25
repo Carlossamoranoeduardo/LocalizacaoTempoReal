@@ -30,6 +30,12 @@ app.use(express.json({ limit: "25mb" }));;
 app.use(express.static(
     path.join(__dirname, "..", "mapa")
 ));
+app.use(
+    "/audio",
+    express.static(
+        path.join(__dirname, "..", "audio")
+    )
+);
 
 
 // ======================================================
@@ -255,115 +261,208 @@ app.get(
 // ======================================================
 
 async function geocodificarEndereco(endereco) {
+
     const original = String(endereco || "").trim();
 
     if (!original) {
         throw new Error("Endereço vazio");
     }
 
-    // Remove numeração de listas:
-    // "1 - Rua General Glicerio..."
-    // "1. Rua General Glicerio..."
     let texto = original
         .replace(/^\s*\d+\s*[\.\)\-:]\s*/i, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    // Remove caracteres que atrapalham os geocodificadores
-    texto = texto
         .replace(/[“”"]/g, "")
-        .replace(/\s*,\s*/g, ", ")
+        .replace(/\s+/g, " ")
         .trim();
 
     console.log("==============================================");
     console.log("GEOCODIFICANDO:", texto);
 
-    /*
-     * Gera várias formas do mesmo endereço.
-     * Não alteramos o endereço original que será exibido ao usuário.
-     */
-    const buscas = [];
+    const tentativas = [];
 
-    function adicionarBusca(valor) {
+    function adicionar(valor) {
         if (!valor) return;
 
-        valor = valor
+        valor = String(valor)
             .replace(/\s+/g, " ")
             .replace(/,\s*,/g, ",")
             .trim();
 
-        if (!valor) return;
-
-        if (!buscas.includes(valor)) {
-            buscas.push(valor);
+        if (valor && !tentativas.includes(valor)) {
+            tentativas.push(valor);
         }
     }
 
-    // 1 — exatamente como o usuário digitou
-    adicionarBusca(texto);
-
-    // 2 — acrescenta Brasil
-    adicionarBusca(`${texto}, Brasil`);
-
-    // 3 — acrescenta SP/Brasil para endereços de São José do Rio Preto
-    if (/s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(texto)) {
-        adicionarBusca(`${texto}, SP, Brasil`);
-    }
+    adicionar(texto);
+    adicionar(`${texto}, Brasil`);
+    adicionar(`${texto}, SP, Brasil`);
 
     /*
-     * Tenta separar número do logradouro.
+     * Tenta separar:
      *
-     * Exemplo:
      * Rua Antonio Braz de Lima 315 Sao Jose do Rio Preto
      *
-     * vira:
-     * Rua Antonio Braz de Lima, 315, Sao Jose do Rio Preto, SP, Brasil
+     * em:
+     * rua = Rua Antonio Braz de Lima
+     * numero = 315
+     * cidade = Sao Jose do Rio Preto
      */
+
     const matchNumero = texto.match(
         /^(.+?)\s+(\d+[A-Za-z]?(?:[-\/]\d+)?)\s+(.+)$/i
     );
 
-    if (matchNumero) {
-        const logradouro = matchNumero[1].trim();
-        const numero = matchNumero[2].trim();
-        const localidade = matchNumero[3].trim();
+    let logradouro = null;
+    let numero = null;
+    let localidade = null;
 
-        adicionarBusca(
+    if (matchNumero) {
+
+        logradouro = matchNumero[1].trim();
+        numero = matchNumero[2].trim();
+        localidade = matchNumero[3].trim();
+
+        console.log("LOGRADOURO:", logradouro);
+        console.log("NÚMERO:", numero);
+        console.log("CIDADE:", localidade);
+
+        adicionar(
+            `${logradouro}, ${numero}, ${localidade}`
+        );
+
+        adicionar(
             `${logradouro}, ${numero}, ${localidade}, Brasil`
         );
 
-        if (/s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(localidade)) {
-            adicionarBusca(
-                `${logradouro}, ${numero}, São José do Rio Preto, SP, Brasil`
-            );
-        }
+        adicionar(
+            `${logradouro}, ${numero}, ${localidade}, SP, Brasil`
+        );
+
+        adicionar(
+            `${logradouro}, ${localidade}, Brasil`
+        );
     }
 
     /*
-     * Para nomes de bairros/localidades sem número:
+     * =====================================================
+     * NOMINATIM — BUSCA ESTRUTURADA
+     * =====================================================
      *
-     * Jardim dos Buritis São José do Rio Preto
-     * Vila Elmaz São José do Rio Preto
-     * Parque Cidadania São José do Rio Preto
+     * Primeiro tenta rua + número + cidade separados.
      */
-    if (
-        /^(jardim|vila|parque|bairro|residencial|conjunto|loteamento)\b/i.test(texto)
-    ) {
-        adicionarBusca(`${texto}, São José do Rio Preto, SP, Brasil`);
-    }
 
-    let ultimoErro = null;
-
-    // ============================================================
-    // NOMINATIM
-    // ============================================================
-
-    for (let i = 0; i < buscas.length; i++) {
-        const busca = buscas[i];
+    if (logradouro && numero && localidade) {
 
         try {
+
             console.log(
-                `Nominatim ${i + 1}/${buscas.length}: ${busca}`
+                "Nominatim estruturado:",
+                logradouro,
+                numero,
+                localidade
+            );
+
+            const resposta = await axios.get(
+                "https://nominatim.openstreetmap.org/search",
+                {
+                    params: {
+                        street: `${numero} ${logradouro}`,
+                        city: localidade,
+                        country: "Brasil",
+                        countrycodes: "br",
+                        format: "jsonv2",
+                        addressdetails: 1,
+                        limit: 10
+                    },
+
+                    headers: {
+                        "User-Agent":
+                            "LocalizacaoTempoReal/1.0"
+                    },
+
+                    timeout: 30000
+                }
+            );
+
+            const resultados =
+                Array.isArray(resposta.data)
+                    ? resposta.data
+                    : [];
+
+            console.log(
+                "Nominatim estruturado retornou:",
+                resultados.length
+            );
+
+            if (resultados.length > 0) {
+
+                const resultado =
+                    resultados.find(r => {
+
+                        const nome =
+                            String(
+                                r.display_name || ""
+                            ).toLowerCase();
+
+                        return nome.includes(
+                            localidade.toLowerCase()
+                        );
+
+                    }) || resultados[0];
+
+                if (
+                    resultado &&
+                    resultado.lat &&
+                    resultado.lon
+                ) {
+
+                    console.log(
+                        "OK NOMINATIM ESTRUTURADO:",
+                        resultado.lat,
+                        resultado.lon
+                    );
+
+                    return {
+                        endereco: original,
+
+                        latitude:
+                            Number(resultado.lat),
+
+                        longitude:
+                            Number(resultado.lon),
+
+                        encontradoPor:
+                            "Nominatim estruturado"
+                    };
+                }
+            }
+
+        } catch (erro) {
+
+            console.log(
+                "Nominatim estruturado falhou:",
+                erro.response?.status ||
+                erro.code ||
+                erro.message
+            );
+        }
+
+    }
+
+    /*
+     * =====================================================
+     * NOMINATIM — BUSCA NORMAL
+     * =====================================================
+     */
+
+    for (let i = 0; i < tentativas.length; i++) {
+
+        const busca = tentativas[i];
+
+        try {
+
+            console.log(
+                `Nominatim ${i + 1}/${tentativas.length}:`,
+                busca
             );
 
             const resposta = await axios.get(
@@ -374,129 +473,137 @@ async function geocodificarEndereco(endereco) {
                         format: "jsonv2",
                         addressdetails: 1,
                         limit: 10,
-                        countrycodes: "br",
-                        "accept-language": "pt-BR"
+                        countrycodes: "br"
                     },
-                    headers: {
-                        "User-Agent":
-                            "LocalizacaoTempoReal/1.0 (sistema de roteirizacao)"
-                    },
-                    timeout: 20000
-                }
-            );
 
-            const resultados = Array.isArray(resposta.data)
-                ? resposta.data
-                : [];
-
-            console.log(
-                `Nominatim retornou ${resultados.length} resultado(s)`
-            );
-
-            if (resultados.length > 0) {
-                /*
-                 * Primeiro tenta encontrar resultado brasileiro.
-                 */
-                const brasileiros = resultados.filter((r) => {
-                    const pais =
-                        r.address?.country_code ||
-                        "";
-
-                    return pais.toLowerCase() === "br";
-                });
-
-                const candidatos =
-                    brasileiros.length > 0
-                        ? brasileiros
-                        : resultados;
-
-                /*
-                 * Dá preferência para São José do Rio Preto
-                 * quando ela estiver presente no endereço digitado.
-                 */
-                let escolhido = candidatos[0];
-
-                if (
-                    /s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(texto)
-                ) {
-                    const rioPreto = candidatos.find((r) => {
-                        const endereco = r.address || {};
-
-                        const cidade = [
-                            endereco.city,
-                            endereco.town,
-                            endereco.municipality,
-                            endereco.city_district,
-                            endereco.county
-                        ]
-                            .filter(Boolean)
-                            .join(" ");
-
-                        return /s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(
-                            cidade
-                        );
-                    });
-
-                    if (rioPreto) {
-                        escolhido = rioPreto;
-                    }
-                }
-
-                if (escolhido && escolhido.lat && escolhido.lon) {
-                    console.log(
-                        "OK Nominatim:",
-                        escolhido.lat,
-                        escolhido.lon
-                    );
-
-                    return {
-                        endereco: original,
-                        latitude: Number(escolhido.lat),
-                        longitude: Number(escolhido.lon),
-                        encontradoPor: "Nominatim"
-                    };
-                }
-            }
-        } catch (erro) {
-            ultimoErro = erro;
-
-            console.log(
-                "Nominatim falhou:",
-                erro.response?.status || erro.code || erro.message
-            );
-        }
-
-        /*
-         * Respeita o limite do Nominatim.
-         */
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-    }
-
-    // ============================================================
-    // PHOTON
-    // ============================================================
-
-    for (let i = 0; i < buscas.length; i++) {
-        const busca = buscas[i];
-
-        try {
-            console.log(
-                `Photon ${i + 1}/${buscas.length}: ${busca}`
-            );
-
-            const resposta = await axios.get(
-                "https://photon.komoot.io/api/",
-                {
-                    params: {
-                        q: busca,
-                        limit: 10,
-                        lang: "pt"
-                    },
                     headers: {
                         "User-Agent":
                             "LocalizacaoTempoReal/1.0"
                     },
-                    timeout: 20000
+
+                    timeout: 30000
+                }
+            );
+
+            const resultados =
+                Array.isArray(resposta.data)
+                    ? resposta.data
+                    : [];
+
+            console.log(
+                "Nominatim retornou:",
+                resultados.length
+            );
+
+            if (resultados.length > 0) {
+
+                let resultado = resultados[0];
+
+                if (localidade) {
+
+                    const cidadeNormalizada =
+                        localidade
+                            .toLowerCase()
+                            .normalize("NFD")
+                            .replace(/[\u0300-\u036f]/g, "");
+
+                    const encontrado =
+                        resultados.find(r => {
+
+                            const nome =
+                                String(
+                                    r.display_name || ""
+                                )
+                                .toLowerCase()
+                                .normalize("NFD")
+                                .replace(
+                                    /[\u0300-\u036f]/g,
+                                    ""
+                                );
+
+                            return nome.includes(
+                                cidadeNormalizada
+                            );
+                        });
+
+                    if (encontrado) {
+                        resultado = encontrado;
+                    }
+                }
+
+                if (
+                    resultado &&
+                    resultado.lat &&
+                    resultado.lon
+                ) {
+
+                    console.log(
+                        "OK NOMINATIM:",
+                        resultado.lat,
+                        resultado.lon
+                    );
+
+                    return {
+                        endereco: original,
+
+                        latitude:
+                            Number(resultado.lat),
+
+                        longitude:
+                            Number(resultado.lon),
+
+                        encontradoPor:
+                            "Nominatim"
+                    };
+                }
+            }
+
+        } catch (erro) {
+
+            console.log(
+                "Nominatim falhou:",
+                erro.response?.status ||
+                erro.code ||
+                erro.message
+            );
+        }
+
+        await new Promise(resolve =>
+            setTimeout(resolve, 1200)
+        );
+    }
+
+    /*
+     * =====================================================
+     * PHOTON
+     * =====================================================
+     */
+
+    for (let i = 0; i < tentativas.length; i++) {
+
+        const busca = tentativas[i];
+
+        try {
+
+            console.log(
+                `Photon ${i + 1}/${tentativas.length}:`,
+                busca
+            );
+
+            const resposta = await axios.get(
+                "https://photon.komoot.io/api",
+                {
+                    params: {
+                        q: busca,
+                        limit: 10
+                    },
+
+                    headers: {
+                        "User-Agent":
+                            "LocalizacaoTempoReal/1.0"
+                    },
+
+                    timeout: 30000
                 }
             );
 
@@ -504,109 +611,100 @@ async function geocodificarEndereco(endereco) {
                 resposta.data?.features || [];
 
             console.log(
-                `Photon retornou ${features.length} resultado(s)`
+                "Photon retornou:",
+                features.length
             );
 
             if (features.length > 0) {
-                /*
-                 * Primeiro procura Brasil.
-                 */
-                const brasileiros = features.filter((f) => {
-                    const p = f.properties || {};
 
-                    return (
-                        String(p.countrycode || "").toLowerCase() ===
-                            "br" ||
-                        /brasil/i.test(String(p.country || ""))
-                    );
-                });
+                let resultado = features[0];
 
-                const candidatos =
-                    brasileiros.length > 0
-                        ? brasileiros
-                        : features;
+                if (localidade) {
 
-                let escolhido = candidatos[0];
+                    const cidadeNormalizada =
+                        localidade
+                            .toLowerCase()
+                            .normalize("NFD")
+                            .replace(/[\u0300-\u036f]/g, "");
 
-                /*
-                 * Se o usuário informou São José do Rio Preto,
-                 * procura explicitamente essa cidade.
-                 */
-                if (
-                    /s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(texto)
-                ) {
-                    const rioPreto = candidatos.find((f) => {
-                        const p = f.properties || {};
+                    const encontrado =
+                        features.find(feature => {
 
-                        const localidade = [
-                            p.city,
-                            p.town,
-                            p.municipality,
-                            p.county,
-                            p.district
-                        ]
-                            .filter(Boolean)
-                            .join(" ");
+                            const p =
+                                feature.properties || {};
 
-                        return /s[aã]o jos[eé]\s+do\s+rio\s+preto/i.test(
-                            localidade
-                        );
-                    });
+                            const cidade =
+                                String(
+                                    p.city ||
+                                    p.town ||
+                                    p.municipality ||
+                                    p.county ||
+                                    ""
+                                )
+                                .toLowerCase()
+                                .normalize("NFD")
+                                .replace(
+                                    /[\u0300-\u036f]/g,
+                                    ""
+                                );
 
-                    if (rioPreto) {
-                        escolhido = rioPreto;
+                            return cidade.includes(
+                                cidadeNormalizada
+                            );
+                        });
+
+                    if (encontrado) {
+                        resultado = encontrado;
                     }
                 }
 
                 const coordenadas =
-                    escolhido?.geometry?.coordinates;
+                    resultado?.geometry?.coordinates;
 
                 if (
                     Array.isArray(coordenadas) &&
                     coordenadas.length >= 2
                 ) {
+
                     console.log(
-                        "OK Photon:",
+                        "OK PHOTON:",
                         coordenadas[1],
                         coordenadas[0]
                     );
 
                     return {
                         endereco: original,
-                        latitude: Number(coordenadas[1]),
-                        longitude: Number(coordenadas[0]),
-                        encontradoPor: "Photon"
+
+                        latitude:
+                            Number(coordenadas[1]),
+
+                        longitude:
+                            Number(coordenadas[0]),
+
+                        encontradoPor:
+                            "Photon"
                     };
                 }
             }
+
         } catch (erro) {
-            ultimoErro = erro;
 
             console.log(
                 "Photon falhou:",
-                erro.response?.status || erro.code || erro.message
+                erro.response?.status ||
+                erro.code ||
+                erro.message
             );
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    console.log(
-        "NENHUM GEOCODIFICADOR ENCONTROU:",
-        original
-    );
-
-    if (ultimoErro) {
-        console.log(
-            "Último erro:",
-            ultimoErro.response?.status ||
-            ultimoErro.code ||
-            ultimoErro.message
+        await new Promise(resolve =>
+            setTimeout(resolve, 700)
         );
     }
 
     throw new Error(
-        "Endereço não encontrado: " + original
+        "Endereço não encontrado: " +
+        original
     );
 }
 // ======================================================
