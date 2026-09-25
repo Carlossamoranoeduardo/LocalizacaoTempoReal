@@ -652,111 +652,71 @@ function navegar(
 // FINALIZAR ENTREGA
 // ======================================================
 
-async function finalizarEntrega(
-    entregaId
-) {
+async function finalizarEntrega(entregaId) {
 
-    /*
-     * ==================================================
-     * DESCOBRIR SE É A ÚLTIMA ENTREGA
-     * ==================================================
-     */
+    const destinos = obterDestinos();
+    const finalizados = obterFinalizados();
 
-    const destinos =
-        obterDestinos();
+    const pendentes = destinos.filter(
+        (entrega, indice) => {
 
-    const finalizados =
-        obterFinalizados();
+            const id = obterIdEntrega(
+                entrega,
+                indice
+            );
 
-    const pendentes =
-        destinos.filter(
-            (entrega, indice) => {
-
-                const id =
-                    obterIdEntrega(
-                        entrega,
-                        indice
-                    );
-
-                return (
-                    entrega.finalizada !== true &&
-                    entrega.finalizada !== "true" &&
-                    !finalizados.includes(id) &&
-                    !finalizados.includes(String(id))
-                );
-
-            }
-        );
+            return (
+                entrega.finalizada !== true &&
+                entrega.finalizada !== "true" &&
+                !finalizados.includes(id) &&
+                !finalizados.includes(String(id))
+            );
+        }
+    );
 
     const ultimaEntrega =
         pendentes.length === 1;
 
 
-    /*
-     * ==================================================
-     * ALEX
-     *
-     * LIBERA O AUDIO NO CLIQUE
-     * ==================================================
-     */
+    // LIBERA O ÁUDIO NO CLIQUE DO BOTÃO
+    let promessaAudio = null;
 
-    if (
-        perfil === "alex"
-    ) {
+    if (perfil === "alex" && audioContext) {
 
-        await liberarAudioCleber();
+        promessaAudio =
+            audioContext.resume();
 
     }
 
 
-    /*
-     * ==================================================
-     * CONFIRMAÇÃO
-     * ==================================================
-     */
-
+    // CONFIRMAÇÃO
     if (
         !confirm(
             "Deseja finalizar esta entrega?"
         )
     ) {
-
         return;
-
     }
 
-
-    /*
-     * ==================================================
-     * FINALIZAR NO SERVIDOR
-     * ==================================================
-     */
 
     try {
 
         const resposta =
             await fetch(
                 "/rota-compartilhada/" +
-                encodeURIComponent(
-                    rotaId
-                ) +
+                encodeURIComponent(rotaId) +
                 "/finalizar/" +
-                encodeURIComponent(
-                    entregaId
-                ),
+                encodeURIComponent(entregaId),
                 {
                     method: "POST"
                 }
             );
 
-
         const resultado =
             await resposta.json();
 
 
-        if (
-            !resposta.ok
-        ) {
+        if (!resposta.ok) {
 
             throw new Error(
                 resultado.erro ||
@@ -766,15 +726,7 @@ async function finalizarEntrega(
         }
 
 
-        /*
-         * ==================================================
-         * ÚLTIMA ENTREGA DO ALEX
-         *
-         * O CONTEXTO DE ÁUDIO JÁ FOI LIBERADO
-         * NO CLIQUE.
-         * ==================================================
-         */
-
+        // ÚLTIMA ENTREGA DO ALEX
         if (
             perfil === "alex" &&
             ultimaEntrega
@@ -784,16 +736,25 @@ async function finalizarEntrega(
                 "ALEX: ÚLTIMA ENTREGA FINALIZADA."
             );
 
+            if (promessaAudio) {
+
+                await promessaAudio;
+
+            }
+
+            if (
+                audioContext.state !==
+                "running"
+            ) {
+
+                await audioContext.resume();
+
+            }
+
             tocarAudioCleber();
 
         }
 
-
-        /*
-         * ==================================================
-         * ATUALIZAR TELA
-         * ==================================================
-         */
 
         await carregarRota();
 
@@ -801,6 +762,7 @@ async function finalizarEntrega(
     } catch (erro) {
 
         console.error(
+            "ERRO AO FINALIZAR:",
             erro
         );
 
