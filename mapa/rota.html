@@ -221,22 +221,157 @@ const perfil =
     new URLSearchParams(
         window.location.search
     ).get("perfil");
-const audioCleber =
-    new Audio("/audio/cleber.mp3");
+let audioContext = null;
+let audioBufferCleber = null;
+let audioCarregado = false;
 
-audioCleber.preload = "auto";
+
+/*
+ * ======================================================
+ * PREPARAR ÁUDIO CLEBER
+ * ======================================================
+ */
+
+async function prepararAudioCleber() {
+
+    try {
+
+        audioContext =
+            new (
+                window.AudioContext ||
+                window.webkitAudioContext
+            )();
+
+        const resposta =
+            await fetch(
+                "/audio/cleber.mp3"
+            );
+
+        if (!resposta.ok) {
+
+            throw new Error(
+                "Não foi possível carregar /audio/cleber.mp3"
+            );
+
+        }
+
+        const dados =
+            await resposta.arrayBuffer();
+
+        audioBufferCleber =
+            await audioContext.decodeAudioData(
+                dados
+            );
+
+        audioCarregado = true;
+
+        console.log(
+            "ÁUDIO CLEBER CARREGADO."
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO AO CARREGAR ÁUDIO CLEBER:",
+            erro
+        );
+
+    }
+
+}
+
+
+/*
+ * ======================================================
+ * LIBERAR ÁUDIO NO CLIQUE
+ * ======================================================
+ */
+
+async function liberarAudioCleber() {
+
+    if (!audioContext) {
+
+        return;
+
+    }
+
+    try {
+
+        if (
+            audioContext.state ===
+            "suspended"
+        ) {
+
+            await audioContext.resume();
+
+        }
+
+        console.log(
+            "ÁUDIO CLEBER LIBERADO:",
+            audioContext.state
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO AO LIBERAR ÁUDIO:",
+            erro
+        );
+
+    }
+
+}
+
+
+/*
+ * ======================================================
+ * TOCAR CLEBER
+ * ======================================================
+ */
 
 function tocarAudioCleber() {
 
-    audioCleber.currentTime = 0;
+    if (
+        !audioContext ||
+        !audioBufferCleber ||
+        !audioCarregado
+    ) {
 
-    audioCleber.play()
-        .catch(erro => {
-            console.error(
-                "Erro ao tocar áudio CLEBER:",
-                erro
-            );
-        });
+        console.error(
+            "ÁUDIO CLEBER NÃO ESTÁ CARREGADO."
+        );
+
+        return;
+
+    }
+
+    try {
+
+        const fonte =
+            audioContext.createBufferSource();
+
+        fonte.buffer =
+            audioBufferCleber;
+
+        fonte.connect(
+            audioContext.destination
+        );
+
+        fonte.start(0);
+
+        console.log(
+            "ÁUDIO CLEBER TOCANDO."
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO AO TOCAR ÁUDIO CLEBER:",
+            erro
+        );
+
+    }
+
 }
 
 
@@ -561,56 +696,15 @@ async function finalizarEntrega(
      * ==================================================
      * ALEX
      *
-     * LIBERA O ÁUDIO NO PRIMEIRO CLIQUE,
-     * ANTES DO CONFIRM.
+     * LIBERA O AUDIO NO CLIQUE
      * ==================================================
      */
 
-    let audioLiberado =
-        false;
-
     if (
-        perfil === "alex" &&
-        ultimaEntrega
+        perfil === "alex"
     ) {
 
-        console.log(
-            "ALEX: última entrega detectada."
-        );
-
-        try {
-
-            audioCleber.pause();
-
-            audioCleber.currentTime = 0;
-
-            /*
-             * O navegador permite este play porque
-             * ele acontece diretamente no clique.
-             *
-             * Mudo somente para liberar o áudio.
-             */
-
-            audioCleber.muted = true;
-
-            await audioCleber.play();
-
-            audioLiberado = true;
-
-            console.log(
-                "ALEX: áudio liberado."
-            );
-
-        } catch (erro) {
-
-            console.error(
-                "ALEX: não conseguiu liberar áudio:",
-                erro
-            );
-
-            audioLiberado = false;
-
-        }
+        await liberarAudioCleber();
 
     }
 
@@ -626,18 +720,6 @@ async function finalizarEntrega(
             "Deseja finalizar esta entrega?"
         )
     ) {
-
-        if (
-            audioLiberado
-        ) {
-
-            audioCleber.pause();
-
-            audioCleber.currentTime = 0;
-
-            audioCleber.muted = false;
-
-        }
 
         return;
 
@@ -676,18 +758,6 @@ async function finalizarEntrega(
             !resposta.ok
         ) {
 
-            if (
-                audioLiberado
-            ) {
-
-                audioCleber.pause();
-
-                audioCleber.currentTime = 0;
-
-                audioCleber.muted = false;
-
-            }
-
             throw new Error(
                 resultado.erro ||
                 "Não foi possível finalizar a entrega."
@@ -700,7 +770,8 @@ async function finalizarEntrega(
          * ==================================================
          * ÚLTIMA ENTREGA DO ALEX
          *
-         * AGORA O SERVIDOR JÁ CONFIRMOU.
+         * O CONTEXTO DE ÁUDIO JÁ FOI LIBERADO
+         * NO CLIQUE.
          * ==================================================
          */
 
@@ -710,38 +781,17 @@ async function finalizarEntrega(
         ) {
 
             console.log(
-                "ALEX: última entrega finalizada."
+                "ALEX: ÚLTIMA ENTREGA FINALIZADA."
             );
 
-            audioCleber.pause();
-
-            audioCleber.currentTime = 0;
-
-            audioCleber.muted = false;
-
-            try {
-
-                await audioCleber.play();
-
-                console.log(
-                    "ALEX: ÁUDIO CLEBER TOCANDO."
-                );
-
-            } catch (erro) {
-
-                console.error(
-                    "ALEX: ERRO FINAL AO TOCAR CLEBER:",
-                    erro
-                );
-
-            }
+            tocarAudioCleber();
 
         }
 
 
         /*
          * ==================================================
-         * ATUALIZA A TELA
+         * ATUALIZAR TELA
          * ==================================================
          */
 
@@ -1071,6 +1121,8 @@ async function carregarRota() {
 // ======================================================
 // INICIAR
 // ======================================================
+
+prepararAudioCleber();
 
 carregarRota();
 
