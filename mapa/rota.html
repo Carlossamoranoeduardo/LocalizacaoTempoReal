@@ -217,6 +217,27 @@ const parametros =
 
 const rotaId =
     parametros.get("id");
+const perfil =
+    new URLSearchParams(
+        window.location.search
+    ).get("perfil");
+const audioCleber =
+    new Audio("/audio/cleber.mp3");
+
+audioCleber.preload = "auto";
+
+function tocarAudioCleber() {
+
+    audioCleber.currentTime = 0;
+
+    audioCleber.play()
+        .catch(erro => {
+            console.error(
+                "Erro ao tocar áudio CLEBER:",
+                erro
+            );
+        });
+}
 
 
 let dadosRota = null;
@@ -507,7 +528,6 @@ async function finalizarEntrega(
     ) {
 
         return;
-
     }
 
 
@@ -545,6 +565,20 @@ async function finalizarEntrega(
         }
 
 
+        /*
+         * Se for ALEX e esta foi a última entrega,
+         * toca o áudio CLEBER.
+         */
+        if (
+            perfil === "alex" &&
+            Number(resultado.pendentes) === 0
+        ) {
+
+            tocarAudioCleber();
+
+        }
+
+
         await carregarRota();
 
 
@@ -561,7 +595,34 @@ async function finalizarEntrega(
     }
 
 }
+// Libera o áudio dentro do clique do usuário.
+// Isso evita bloqueio de autoplay do navegador.
+if (perfil === "alex") {
 
+    audioCleber.muted = true;
+
+    audioCleber.play()
+        .then(() => {
+
+            audioCleber.pause();
+
+            audioCleber.currentTime = 0;
+
+            audioCleber.muted = false;
+
+        })
+        .catch(erro => {
+
+            console.error(
+                "Não foi possível liberar o áudio:",
+                erro
+            );
+
+            audioCleber.muted = false;
+
+        });
+
+}
 
 // ======================================================
 // MOSTRAR ROTA
