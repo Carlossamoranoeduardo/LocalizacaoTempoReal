@@ -36,6 +36,12 @@ app.use(
         path.join(__dirname, "..", "audio")
     )
 );
+app.use(
+    "/video",
+    express.static(
+        path.join(__dirname, "..", "video")
+    )
+);
 
 
 // ======================================================

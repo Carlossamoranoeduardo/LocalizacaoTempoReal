@@ -336,13 +336,8 @@ function tocarAudioCleber() {
         !audioBufferCleber ||
         !audioCarregado
     ) {
-
-        console.error(
-            "ÁUDIO CLEBER NÃO ESTÁ CARREGADO."
-        );
-
+        console.error("ÁUDIO CLEBER NÃO ESTÁ CARREGADO.");
         return;
-
     }
 
     try {
@@ -356,6 +351,20 @@ function tocarAudioCleber() {
         fonte.connect(
             audioContext.destination
         );
+
+        fonte.onended = function () {
+
+            console.log(
+                "ÁUDIO CLEBER TERMINOU."
+            );
+
+            console.log(
+                "ABRINDO VÍDEO..."
+            );
+
+            window.location.href =
+                "/video/cleber.mp4";
+        };
 
         fonte.start(0);
 
