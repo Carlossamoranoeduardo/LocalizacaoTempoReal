@@ -286,6 +286,7 @@ async function geocodificarEndereco(endereco) {
     const tentativas = [];
 
     function adicionar(valor) {
+
         if (!valor) return;
 
         valor = String(valor)
@@ -293,7 +294,10 @@ async function geocodificarEndereco(endereco) {
             .replace(/,\s*,/g, ",")
             .trim();
 
-        if (valor && !tentativas.includes(valor)) {
+        if (
+            valor &&
+            !tentativas.includes(valor)
+        ) {
             tentativas.push(valor);
         }
     }
@@ -301,17 +305,6 @@ async function geocodificarEndereco(endereco) {
     adicionar(texto);
     adicionar(`${texto}, Brasil`);
     adicionar(`${texto}, SP, Brasil`);
-
-    /*
-     * Tenta separar:
-     *
-     * Rua Antonio Braz de Lima 315 Sao Jose do Rio Preto
-     *
-     * em:
-     * rua = Rua Antonio Braz de Lima
-     * numero = 315
-     * cidade = Sao Jose do Rio Preto
-     */
 
     const matchNumero = texto.match(
         /^(.+?)\s+(\d+[A-Za-z]?(?:[-\/]\d+)?)\s+(.+)$/i
@@ -323,13 +316,29 @@ async function geocodificarEndereco(endereco) {
 
     if (matchNumero) {
 
-        logradouro = matchNumero[1].trim();
-        numero = matchNumero[2].trim();
-        localidade = matchNumero[3].trim();
+        logradouro =
+            matchNumero[1].trim();
 
-        console.log("LOGRADOURO:", logradouro);
-        console.log("NÚMERO:", numero);
-        console.log("CIDADE:", localidade);
+        numero =
+            matchNumero[2].trim();
+
+        localidade =
+            matchNumero[3].trim();
+
+        console.log(
+            "LOGRADOURO:",
+            logradouro
+        );
+
+        console.log(
+            "NÚMERO:",
+            numero
+        );
+
+        console.log(
+            "CIDADE:",
+            localidade
+        );
 
         adicionar(
             `${logradouro}, ${numero}, ${localidade}`
@@ -348,246 +357,19 @@ async function geocodificarEndereco(endereco) {
         );
     }
 
-    /*
-     * =====================================================
-     * NOMINATIM — BUSCA ESTRUTURADA
-     * =====================================================
-     *
-     * Primeiro tenta rua + número + cidade separados.
-     */
 
-    if (logradouro && numero && localidade) {
+    // ==================================================
+    // PHOTON — PRIMEIRA TENTATIVA
+    // ==================================================
 
-        try {
+    for (
+        let i = 0;
+        i < tentativas.length;
+        i++
+    ) {
 
-            console.log(
-                "Nominatim estruturado:",
-                logradouro,
-                numero,
-                localidade
-            );
-
-            const resposta = await axios.get(
-                "https://nominatim.openstreetmap.org/search",
-                {
-                    params: {
-                        street: `${numero} ${logradouro}`,
-                        city: localidade,
-                        country: "Brasil",
-                        countrycodes: "br",
-                        format: "jsonv2",
-                        addressdetails: 1,
-                        limit: 10
-                    },
-
-                    headers: {
-                        "User-Agent":
-                            "LocalizacaoTempoReal/1.0"
-                    },
-
-                    timeout: 30000
-                }
-            );
-
-            const resultados =
-                Array.isArray(resposta.data)
-                    ? resposta.data
-                    : [];
-
-            console.log(
-                "Nominatim estruturado retornou:",
-                resultados.length
-            );
-
-            if (resultados.length > 0) {
-
-                const resultado =
-                    resultados.find(r => {
-
-                        const nome =
-                            String(
-                                r.display_name || ""
-                            ).toLowerCase();
-
-                        return nome.includes(
-                            localidade.toLowerCase()
-                        );
-
-                    }) || resultados[0];
-
-                if (
-                    resultado &&
-                    resultado.lat &&
-                    resultado.lon
-                ) {
-
-                    console.log(
-                        "OK NOMINATIM ESTRUTURADO:",
-                        resultado.lat,
-                        resultado.lon
-                    );
-
-                    return {
-                        endereco: original,
-
-                        latitude:
-                            Number(resultado.lat),
-
-                        longitude:
-                            Number(resultado.lon),
-
-                        encontradoPor:
-                            "Nominatim estruturado"
-                    };
-                }
-            }
-
-        } catch (erro) {
-
-            console.log(
-                "Nominatim estruturado falhou:",
-                erro.response?.status ||
-                erro.code ||
-                erro.message
-            );
-        }
-
-    }
-
-    /*
-     * =====================================================
-     * NOMINATIM — BUSCA NORMAL
-     * =====================================================
-     */
-
-    for (let i = 0; i < tentativas.length; i++) {
-
-        const busca = tentativas[i];
-
-        try {
-
-            console.log(
-                `Nominatim ${i + 1}/${tentativas.length}:`,
-                busca
-            );
-
-            const resposta = await axios.get(
-                "https://nominatim.openstreetmap.org/search",
-                {
-                    params: {
-                        q: busca,
-                        format: "jsonv2",
-                        addressdetails: 1,
-                        limit: 10,
-                        countrycodes: "br"
-                    },
-
-                    headers: {
-                        "User-Agent":
-                            "LocalizacaoTempoReal/1.0"
-                    },
-
-                    timeout: 30000
-                }
-            );
-
-            const resultados =
-                Array.isArray(resposta.data)
-                    ? resposta.data
-                    : [];
-
-            console.log(
-                "Nominatim retornou:",
-                resultados.length
-            );
-
-            if (resultados.length > 0) {
-
-                let resultado = resultados[0];
-
-                if (localidade) {
-
-                    const cidadeNormalizada =
-                        localidade
-                            .toLowerCase()
-                            .normalize("NFD")
-                            .replace(/[\u0300-\u036f]/g, "");
-
-                    const encontrado =
-                        resultados.find(r => {
-
-                            const nome =
-                                String(
-                                    r.display_name || ""
-                                )
-                                .toLowerCase()
-                                .normalize("NFD")
-                                .replace(
-                                    /[\u0300-\u036f]/g,
-                                    ""
-                                );
-
-                            return nome.includes(
-                                cidadeNormalizada
-                            );
-                        });
-
-                    if (encontrado) {
-                        resultado = encontrado;
-                    }
-                }
-
-                if (
-                    resultado &&
-                    resultado.lat &&
-                    resultado.lon
-                ) {
-
-                    console.log(
-                        "OK NOMINATIM:",
-                        resultado.lat,
-                        resultado.lon
-                    );
-
-                    return {
-                        endereco: original,
-
-                        latitude:
-                            Number(resultado.lat),
-
-                        longitude:
-                            Number(resultado.lon),
-
-                        encontradoPor:
-                            "Nominatim"
-                    };
-                }
-            }
-
-        } catch (erro) {
-
-            console.log(
-                "Nominatim falhou:",
-                erro.response?.status ||
-                erro.code ||
-                erro.message
-            );
-        }
-
-        await new Promise(resolve =>
-            setTimeout(resolve, 1200)
-        );
-    }
-
-    /*
-     * =====================================================
-     * PHOTON
-     * =====================================================
-     */
-
-    for (let i = 0; i < tentativas.length; i++) {
-
-        const busca = tentativas[i];
+        const busca =
+            tentativas[i];
 
         try {
 
@@ -596,22 +378,23 @@ async function geocodificarEndereco(endereco) {
                 busca
             );
 
-            const resposta = await axios.get(
-                "https://photon.komoot.io/api",
-                {
-                    params: {
-                        q: busca,
-                        limit: 10
-                    },
+            const resposta =
+                await axios.get(
+                    "https://photon.komoot.io/api",
+                    {
+                        params: {
+                            q: busca,
+                            limit: 10
+                        },
 
-                    headers: {
-                        "User-Agent":
-                            "LocalizacaoTempoReal/1.0"
-                    },
+                        headers: {
+                            "User-Agent":
+                                "LocalizacaoTempoReal/1.0"
+                        },
 
-                    timeout: 30000
-                }
-            );
+                        timeout: 15000
+                    }
+                );
 
             const features =
                 resposta.data?.features || [];
@@ -621,9 +404,12 @@ async function geocodificarEndereco(endereco) {
                 features.length
             );
 
-            if (features.length > 0) {
+            if (
+                features.length > 0
+            ) {
 
-                let resultado = features[0];
+                let resultado =
+                    features[0];
 
                 if (localidade) {
 
@@ -631,36 +417,42 @@ async function geocodificarEndereco(endereco) {
                         localidade
                             .toLowerCase()
                             .normalize("NFD")
-                            .replace(/[\u0300-\u036f]/g, "");
+                            .replace(
+                                /[\u0300-\u036f]/g,
+                                ""
+                            );
 
                     const encontrado =
-                        features.find(feature => {
+                        features.find(
+                            feature => {
 
-                            const p =
-                                feature.properties || {};
+                                const p =
+                                    feature.properties || {};
 
-                            const cidade =
-                                String(
-                                    p.city ||
-                                    p.town ||
-                                    p.municipality ||
-                                    p.county ||
-                                    ""
-                                )
-                                .toLowerCase()
-                                .normalize("NFD")
-                                .replace(
-                                    /[\u0300-\u036f]/g,
-                                    ""
+                                const cidade =
+                                    String(
+                                        p.city ||
+                                        p.town ||
+                                        p.municipality ||
+                                        p.county ||
+                                        ""
+                                    )
+                                    .toLowerCase()
+                                    .normalize("NFD")
+                                    .replace(
+                                        /[\u0300-\u036f]/g,
+                                        ""
+                                    );
+
+                                return cidade.includes(
+                                    cidadeNormalizada
                                 );
-
-                            return cidade.includes(
-                                cidadeNormalizada
-                            );
-                        });
+                            }
+                        );
 
                     if (encontrado) {
-                        resultado = encontrado;
+                        resultado =
+                            encontrado;
                     }
                 }
 
@@ -679,16 +471,23 @@ async function geocodificarEndereco(endereco) {
                     );
 
                     return {
-                        endereco: original,
+
+                        endereco:
+                            original,
 
                         latitude:
-                            Number(coordenadas[1]),
+                            Number(
+                                coordenadas[1]
+                            ),
 
                         longitude:
-                            Number(coordenadas[0]),
+                            Number(
+                                coordenadas[0]
+                            ),
 
                         encontradoPor:
                             "Photon"
+
                     };
                 }
             }
@@ -703,10 +502,325 @@ async function geocodificarEndereco(endereco) {
             );
         }
 
-        await new Promise(resolve =>
-            setTimeout(resolve, 700)
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    700
+                )
         );
     }
+
+
+    // ==================================================
+    // NOMINATIM ESTRUTURADO — FALLBACK
+    // ==================================================
+
+    if (
+        logradouro &&
+        numero &&
+        localidade
+    ) {
+
+        try {
+
+            console.log(
+                "Nominatim estruturado:",
+                logradouro,
+                numero,
+                localidade
+            );
+
+            const resposta =
+                await axios.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    {
+                        params: {
+
+                            street:
+                                `${numero} ${logradouro}`,
+
+                            city:
+                                localidade,
+
+                            country:
+                                "Brasil",
+
+                            countrycodes:
+                                "br",
+
+                            format:
+                                "jsonv2",
+
+                            addressdetails:
+                                1,
+
+                            limit:
+                                10
+                        },
+
+                        headers: {
+                            "User-Agent":
+                                "LocalizacaoTempoReal/1.0"
+                        },
+
+                        timeout:
+                            15000
+                    }
+                );
+
+            const resultados =
+                Array.isArray(
+                    resposta.data
+                )
+                    ? resposta.data
+                    : [];
+
+            console.log(
+                "Nominatim estruturado retornou:",
+                resultados.length
+            );
+
+            if (
+                resultados.length > 0
+            ) {
+
+                const resultado =
+                    resultados.find(
+                        r => {
+
+                            const nome =
+                                String(
+                                    r.display_name ||
+                                    ""
+                                )
+                                .toLowerCase();
+
+                            return nome.includes(
+                                localidade.toLowerCase()
+                            );
+                        }
+                    ) ||
+                    resultados[0];
+
+                if (
+                    resultado &&
+                    resultado.lat &&
+                    resultado.lon
+                ) {
+
+                    console.log(
+                        "OK NOMINATIM ESTRUTURADO:",
+                        resultado.lat,
+                        resultado.lon
+                    );
+
+                    return {
+
+                        endereco:
+                            original,
+
+                        latitude:
+                            Number(
+                                resultado.lat
+                            ),
+
+                        longitude:
+                            Number(
+                                resultado.lon
+                            ),
+
+                        encontradoPor:
+                            "Nominatim estruturado"
+
+                    };
+                }
+            }
+
+        } catch (erro) {
+
+            console.log(
+                "Nominatim estruturado falhou:",
+                erro.response?.status ||
+                erro.code ||
+                erro.message
+            );
+        }
+
+        // Respeitar intervalo do Nominatim
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    1500
+                )
+        );
+    }
+
+
+    // ==================================================
+    // NOMINATIM NORMAL — ÚLTIMO RECURSO
+    // ==================================================
+
+    for (
+        let i = 0;
+        i < Math.min(tentativas.length, 2);
+        i++
+    ) {
+
+        const busca =
+            tentativas[i];
+
+        try {
+
+            console.log(
+                `Nominatim fallback ${i + 1}/2:`,
+                busca
+            );
+
+            const resposta =
+                await axios.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    {
+                        params: {
+
+                            q:
+                                busca,
+
+                            format:
+                                "jsonv2",
+
+                            addressdetails:
+                                1,
+
+                            limit:
+                                10,
+
+                            countrycodes:
+                                "br"
+                        },
+
+                        headers: {
+                            "User-Agent":
+                                "LocalizacaoTempoReal/1.0"
+                        },
+
+                        timeout:
+                            15000
+                    }
+                );
+
+            const resultados =
+                Array.isArray(
+                    resposta.data
+                )
+                    ? resposta.data
+                    : [];
+
+            console.log(
+                "Nominatim fallback retornou:",
+                resultados.length
+            );
+
+            if (
+                resultados.length > 0
+            ) {
+
+                let resultado =
+                    resultados[0];
+
+                if (localidade) {
+
+                    const cidadeNormalizada =
+                        localidade
+                            .toLowerCase()
+                            .normalize("NFD")
+                            .replace(
+                                /[\u0300-\u036f]/g,
+                                ""
+                            );
+
+                    const encontrado =
+                        resultados.find(
+                            r => {
+
+                                const nome =
+                                    String(
+                                        r.display_name ||
+                                        ""
+                                    )
+                                    .toLowerCase()
+                                    .normalize("NFD")
+                                    .replace(
+                                        /[\u0300-\u036f]/g,
+                                        ""
+                                    );
+
+                                return nome.includes(
+                                    cidadeNormalizada
+                                );
+                            }
+                        );
+
+                    if (encontrado) {
+                        resultado =
+                            encontrado;
+                    }
+                }
+
+                if (
+                    resultado &&
+                    resultado.lat &&
+                    resultado.lon
+                ) {
+
+                    console.log(
+                        "OK NOMINATIM:",
+                        resultado.lat,
+                        resultado.lon
+                    );
+
+                    return {
+
+                        endereco:
+                            original,
+
+                        latitude:
+                            Number(
+                                resultado.lat
+                            ),
+
+                        longitude:
+                            Number(
+                                resultado.lon
+                            ),
+
+                        encontradoPor:
+                            "Nominatim"
+
+                    };
+                }
+            }
+
+        } catch (erro) {
+
+            console.log(
+                "Nominatim fallback falhou:",
+                erro.response?.status ||
+                erro.code ||
+                erro.message
+            );
+        }
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    1500
+                )
+        );
+    }
+
 
     throw new Error(
         "Endereço não encontrado: " +
