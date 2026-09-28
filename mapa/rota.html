@@ -11,6 +11,10 @@
     >
 
     <title>Rota do Motorista</title>
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
 
     <style>
 
@@ -202,6 +206,36 @@
     <div id="status">
         CARREGANDO ROTA...
     </div>
+<button
+    id="botaoVerMapa"
+    onclick="mostrarMapaRota()"
+    style="
+        display:none;
+        width:100%;
+        margin-bottom:15px;
+        padding:10px;
+        border:0;
+        border-radius:8px;
+        background:#1976d2;
+        color:white;
+        font-size:15px;
+        font-weight:bold;
+    "
+>
+    🗺️ VER NO MAPA
+</button>
+
+<div
+    id="mapaRota"
+    style="
+        display:none;
+        width:100%;
+        height:450px;
+        margin-bottom:15px;
+        border-radius:10px;
+        overflow:hidden;
+    "
+></div>
 
     <div id="listaEntregas"></div>
 
@@ -221,6 +255,15 @@ const perfil =
     new URLSearchParams(
         window.location.search
     ).get("perfil");
+
+if (perfil === "alex") {
+
+    document.getElementById(
+        "botaoVerMapa"
+    ).style.display = "block";
+
+}
+
 let audioContext = null;
 let audioBufferCleber = null;
 let audioCarregado = false;
@@ -1092,6 +1135,245 @@ async function carregarRota() {
 // ======================================================
 // INICIAR
 // ======================================================
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+></script>
+
+<script>
+
+let mapaRota = null;
+let camadaRota = null;
+
+async function mostrarMapaRota() {
+
+    const botao =
+        document.getElementById("botaoVerMapa");
+
+    const divMapa =
+        document.getElementById("mapaRota");
+
+    if (!dadosRota) {
+
+        alert("A rota ainda não foi carregada.");
+
+        return;
+    }
+
+    divMapa.style.display = "block";
+
+    botao.textContent = "🗺️ MAPA DA ROTA";
+
+    if (mapaRota) {
+
+        setTimeout(() => {
+            mapaRota.invalidateSize();
+        }, 100);
+
+        return;
+    }
+
+    mapaRota =
+        L.map("mapaRota")
+        .setView(
+            [-20.81, -49.37],
+            10
+        );
+
+    L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            maxZoom: 19,
+            attribution:
+                "&copy; OpenStreetMap"
+        }
+    ).addTo(mapaRota);
+
+
+    const origem =
+        dadosRota.origem ||
+        dadosRota.rota?.origem;
+
+    const destinos =
+        obterDestinos();
+
+
+    const pontos = [];
+
+
+    if (
+        origem &&
+        Number.isFinite(Number(origem.latitude)) &&
+        Number.isFinite(Number(origem.longitude))
+    ) {
+
+        pontos.push({
+            latitude:
+                Number(origem.latitude),
+
+            longitude:
+                Number(origem.longitude),
+
+            numero: 0
+        });
+
+    }
+
+
+    destinos.forEach(
+        (destino, indice) => {
+
+            const latitude =
+                obterLatitude(destino);
+
+            const longitude =
+                obterLongitude(destino);
+
+            if (
+                Number.isFinite(latitude) &&
+                Number.isFinite(longitude)
+            ) {
+
+                pontos.push({
+
+                    latitude:
+                        latitude,
+
+                    longitude:
+                        longitude,
+
+                    numero:
+                        destino.numero ??
+                        indice + 1
+
+                });
+
+            }
+
+        }
+    );
+
+
+    if (pontos.length < 2) {
+
+        alert(
+            "Não existem pontos suficientes para desenhar a rota."
+        );
+
+        return;
+    }
+
+
+    const coordenadas =
+        pontos
+        .map(
+            ponto =>
+                ponto.longitude +
+                "," +
+                ponto.latitude
+        )
+        .join(";");
+
+
+    try {
+
+        const resposta =
+            await fetch(
+                "https://router.project-osrm.org/route/v1/driving/" +
+                coordenadas +
+                "?overview=full&geometries=geojson&steps=false"
+            );
+
+
+        const dados =
+            await resposta.json();
+
+
+        if (
+            !resposta.ok ||
+            dados.code !== "Ok" ||
+            !dados.routes ||
+            !dados.routes.length
+        ) {
+
+            throw new Error(
+                "Não foi possível desenhar o percurso."
+            );
+
+        }
+
+
+        const geometria =
+            dados.routes[0].geometry;
+
+
+        camadaRota =
+            L.geoJSON(
+                geometria
+            ).addTo(mapaRota);
+
+
+        pontos.forEach(
+            ponto => {
+
+                const marcador =
+                    L.marker([
+                        ponto.latitude,
+                        ponto.longitude
+                    ])
+                    .addTo(mapaRota);
+
+
+                if (ponto.numero === 0) {
+
+                    marcador.bindPopup(
+                        "<b>ORIGEM</b>"
+                    );
+
+                } else {
+
+                    marcador.bindPopup(
+                        "<b>Entrega " +
+                        ponto.numero +
+                        "</b>"
+                    );
+
+                }
+
+            }
+        );
+
+
+        const limites =
+            camadaRota.getBounds();
+
+        if (limites.isValid()) {
+
+            mapaRota.fitBounds(
+                limites,
+                {
+                    padding: [20, 20]
+                }
+            );
+
+        }
+
+
+    } catch (erro) {
+
+        console.error(
+            "ERRO AO MOSTRAR MAPA:",
+            erro
+        );
+
+        alert(
+            "Não foi possível mostrar o percurso."
+        );
+
+    }
+
+}
+
+</script>
 
 prepararAudioCleber();
 
