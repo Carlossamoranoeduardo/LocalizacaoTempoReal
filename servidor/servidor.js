@@ -716,8 +716,19 @@ async function geocodificarEndereco(endereco) {
 // ======================================================
 // ROTA
 // ======================================================
-
+let roteirizacaoEmAndamento = false;
 app.post("/rota", async (req, res) => {
+
+    if (roteirizacaoEmAndamento) {
+
+        return res.status(429).json({
+            sucesso: false,
+            erro: "Uma roteirização já está em andamento. Aguarde a conclusão."
+        });
+
+    }
+
+    roteirizacaoEmAndamento = true;
 
     try {
 
@@ -1067,28 +1078,30 @@ console.log(
         });
 
 
-    } catch (erro) {
+       } catch (erro) { 
 
-        console.error("");
-        console.error(
-            "ERRO:",
-            erro.message
-        );
+        console.error(""); 
+        console.error( 
+            "ERRO:", 
+            erro.message 
+        ); 
 
+        res.status(500).json({ 
 
-        res.status(500).json({
+            sucesso: false, 
 
-            sucesso: false,
+            erro: 
+                erro.message 
 
-            erro:
-                erro.message
+        }); 
 
-        });
+    } finally {
+
+        roteirizacaoEmAndamento = false;
 
     }
 
 });
-
 
 // ======================================================
 // ENVIAR ROTA PARA CELULAR
