@@ -1135,6 +1135,9 @@ async function carregarRota() {
 // ======================================================
 // INICIAR
 // ======================================================
+
+</script>
+
 <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 ></script>
@@ -1346,6 +1349,7 @@ async function mostrarMapaRota() {
         const limites =
             camadaRota.getBounds();
 
+
         if (limites.isValid()) {
 
             mapaRota.fitBounds(
@@ -1372,7 +1376,6 @@ async function mostrarMapaRota() {
     }
 
 }
-
 
 
 prepararAudioCleber();
